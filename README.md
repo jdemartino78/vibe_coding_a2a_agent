@@ -122,6 +122,15 @@ We will run the Gradio frontend locally to interact with our agent system.
     (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1 && ./deploy_frontend.sh --mode local)
     ```
 
+#### Deploying to Cloud Run (Optional)
+You can also deploy the frontend to Cloud Run.
+
+1.  **Run the Cloud Run deployment script:**
+    ```bash
+    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1 && ./deploy_frontend.sh --mode cloudrun)
+    ```
+    This script will build the container image, deploy the service to Cloud Run, and set up the necessary IAM permissions. Once deployed, you can access the frontend at the URL provided in the output.
+
 ### 5. Test the System
 
 Open your web browser and go to `http://127.0.0.1:8080`. You can now chat with your multi-agent system!
