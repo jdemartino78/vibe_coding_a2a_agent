@@ -161,3 +161,14 @@ Here is the architecture you deployed:
 - [Agent Development Kit (ADK)](https://github.com/GoogleCloudPlatform/agent-development-kit)
 - [Agent to Agent (A2A) Protocol](https://github.com/GoogleCloudPlatform/agent-development-kit/blob/main/docs/a2a.md)
 - [Vertex AI Agent Engine](https://cloud.google.com/vertex-ai/docs/agent-engine/overview)
+
+## Cleanup
+To avoid incurring future charges, you can delete the resources created during this lab by running the cleanup script.
+
+```bash
+./cleanup.sh
+```
+This script will:
+- Delete the Cloud Run services for the MCP servers and the frontend.
+- Delete the Vertex AI Agent Engine agents.
+- Delete the GCS bucket used for staging.
