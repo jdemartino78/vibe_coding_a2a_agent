@@ -1,5 +1,11 @@
 # Vibe Coding: Building an A2A Agentic System (Live Training)
 
+> **⚠️ DISCLAIMER**: THIS DEMO IS INTENDED FOR DEMONSTRATION PURPOSES ONLY. IT IS NOT INTENDED FOR USE IN A PRODUCTION ENVIRONMENT.
+>
+> **⚠️ Important**: A2A is in active development (WIP) thus, in the near future there might be changes that are different from what demonstrated here.
+>
+> **⚠️ Important**: Please run this lab in **Cloud Shell** to ensure you have the proper permissions.
+
 ## Overview
 In this 1-hour session, we will build and deploy a multi-agent system using the A2A (Agent-to-Agent) protocol. This system will include a 'Hosting' agent that communicates with 'Weather' and 'Cocktail' agents to fulfill user requests.
 
@@ -35,27 +41,26 @@ First, we need to configure the environment variables for our project.
 2.  **Configure A2A Agents Environment:**
     Navigate to the agents directory and copy the example `.env` file:
     ```bash
-    cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents
-    cp .env.example .env
+    cp a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env.example a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env
     ```
     Open the newly created `.env` file and fill in your `PROJECT_ID`, `PROJECT_NUMBER`, and `BUCKET_NAME`. You will fill in the server and agent URLs in the next steps.
 
 3.  **Configure Frontend Environment:**
-    Navigate to the frontend directory and copy the example `.env` file:
+    Copy the example `.env` file for the frontend:
     ```bash
-    cd ../frontend_option1
-    cp .env.example .env
+    cp a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env.example a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env
     ```
     Open the newly created `.env` file and fill in your `PROJECT_ID` and `PROJECT_NUMBER`. You will fill in the `HOSTING_AGENT_ENGINE_ID` later.
 
 4.  **Source Environment Variables:**
-    Go back to the root of the project and source the `setup_env.sh` script to export the variables into your shell session:
+    Source the `setup_env.sh` script to export the variables into your shell session:
     ```bash
-    cd ../../../..
     source mcp_servers/setup_env.sh
     ```
 
 ### 2. Deploy Tooling Servers (MCP Servers)
+
+We are first deploying our MCP Servers. These are not agents. They are simple Cloud Run services that expose tools (like the Cocktail and Weather APIs) for our agents to use.
 
 These servers provide the tools that our agents will use (e.g., weather and cocktail APIs).
 
@@ -76,29 +81,30 @@ These servers provide the tools that our agents will use (e.g., weather and cock
 
 ### 3. Deploy A2A Agents
 
+Now we deploy the agents. The HostingAgent is our Orchestrator. It will find the CocktailAgent and WeatherAgent by reading their Agent Card, which is the 'business card' that describes what an agent can do.
+
 Now, we will deploy our three agents to Vertex AI Agent Engine.
 
-1.  **Navigate to the agents directory and install dependencies:**
+1.  **Install Agent Dependencies:**
     ```bash
-    cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents
-    uv sync
+    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && uv sync)
     ```
 
 2.  **Deploy the Cocktail Agent:**
     ```bash
-    python deploy_cocktail_agent.py
+    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && python deploy_cocktail_agent.py)
     ```
     This script will deploy the agent and save its URL and Engine ID in the `.env` file.
 
 3.  **Deploy the Weather Agent:**
     ```bash
-    python deploy_weather_agent.py
+    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && python deploy_weather_agent.py)
     ```
     This script will deploy the agent and save its URL in the `.env` file.
 
 4.  **Deploy the Hosting Agent:**
     ```bash
-    python deploy_hosting_agent.py
+    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && python deploy_hosting_agent.py)
     ```
     This script deploys the main hosting agent that will orchestrate the other two. It will also save its URL and Engine ID in the `.env` file.
 
@@ -107,16 +113,13 @@ Now, we will deploy our three agents to Vertex AI Agent Engine.
 
 ### 4. Run the Frontend
 
+This Gradio app is our A2A Client. It only knows about the HostingAgent. We will ask it for a cocktail, and it will orchestrate the other agents to get the answer.
+
 We will run the Gradio frontend locally to interact with our agent system.
 
-1.  **Navigate to the frontend directory:**
+1.  **Run the local deployment script:**
     ```bash
-    cd ../frontend_option1
-    ```
-
-2.  **Run the local deployment script:**
-    ```bash
-    ./deploy_frontend.sh --mode local
+    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1 && ./deploy_frontend.sh --mode local)
     ```
 
 ### 5. Test the System
@@ -127,6 +130,16 @@ Try asking it:
 - `Please get weather forecast for New York`
 - `Please list a random cocktail`
 - `What ingredients are in a Margarita?`
+
+## What We Just Built
+Congratulations! You have successfully built a multi-agent system.
+- A **Gradio Frontend** (our client)
+- Talked to a **Hosting Agent** (our orchestrator)
+- Which discovered and called two **Specialized Agents** (Cocktail and Weather)
+- Which in turn called their own **Tools** (the MCP Servers)
+
+Here is the architecture you deployed:
+![architecture](a2a-on-ae-multiagent-memorybank/asset/a2a_ae_diagram.png)
 
 ## Key Files
 
