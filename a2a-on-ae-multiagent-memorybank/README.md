@@ -6,6 +6,8 @@
 
  > **⚠️ Important**: Please run it in **Cloud Shell** to ensure you have the proper permissions.
 
+> **Note**: For step-by-step setup and deployment instructions for the live training, please refer to the main `README.md` file in the project root. This document provides additional context on the project's architecture and components.
+
 This document describes a multi-agent set up using Agent2Agent (A2A), ADK, Agent Engine, MCP servers, and the ADK extension for A2A. It provides an overview of how the A2A protocol works between agents, and how the extension is activated on the server and included in the response.
 
 ## Overview
@@ -61,62 +63,29 @@ Here are some example questions you can ask the chatbot:
 - `Please get weather forecast for New York`
 - `Please get weather forecast for 40.7128,-74.0060`
 
-## Setup and Deployment
+## Project Components Guide
+
+This project requires a few components to be deployed and run. The main `README.md` contains the step-by-step instructions. This section provides a high-level overview of the components.
 
 ### Prerequisites
 
-Before running the application locally, ensure you have the following installed:
+The project requires the following to be installed:
 
 1.  [Python 3.12+](https://www.python.org/downloads/)
 2.  gcloud SDK: [https://cloud.google.com/sdk/docs/install](https://cloud.google.com/sdk/docs/install)
-3.  **(Optional) uv:** The Python package management tool used in this project. Follow the installation guide: [https://docs.astral.sh/uv/getting-started/installation/](https://docs.astral.sh/uv/getting-started/installation/)
+3.  `uv`: The Python package management tool used in this project.
 
-### 1. Project Structure
+### 1. MCP Servers
 
-Ensure your project follows this structure:
+The `mcp_servers` directory in the parent folder contains the backend tool servers for the Cocktail and Weather agents. These are deployed as Cloud Run services. The `README.md` in that directory provides more details.
 
-```bash
-.
-├── a2a_multiagent_mcp_app
-│   ├── a2a_agents
-│   │   ├── cocktail_agent
-│   │   ├── commons
-│   │   ├── deploy_cocktail_agent.ipynb
-│   │   ├── deploy_hosting_agent.ipynb
-│   │   ├── deploy_weather_agent.ipynb
-│   │   ├── hosting_agent
-│   │   ├── __init__.py
-│   │   ├── pyproject.toml
-│   │   ├── README.md
-│   │   ├── uv.lock
-│   │   └── weather_agent
-│   └── frontend_option1
-│       ├── Dockerfile
-│       ├── main.py
-│       ├── pyproject.toml
-│       ├── README.md
-│       ├── static
-│       └── uv.lock
-├── asset
-│   ├── a2a_ae_diagram.png
-│   └── screenshot.png
-├── LICENSE
-├── pyproject.toml
-├── README.md
-└── uv.lock
-```
+### 2. A2A Agents
 
-### 2. Deploy MCP servers
+The `a2a_multiagent_mcp_app/a2a_agents` directory contains the source code for the three agents (Hosting, Cocktail, and Weather) and their deployment scripts. The `README.md` in that directory provides more details on the agent architecture.
 
-Navigate to the parent directory and go to the `mcp_servers` sub directories and follow the `README.md` file to set up the MCP servers on Cloud Run.
+### 3. Frontend Application
 
-### 3. Deploy A2A Agents
-
-Navigate to the `a2a_multiagent_mcp_app/a2a_agents` directory and follow the `README.md` file to set up the A2A agents on Agent Engine.
-
-### 4. Run the Application
-
-Navigate to `a2a_multiagent_mcp_app/frontend_option1` and follow the `README.md` to run the application.
+The `a2a_multiagent_mcp_app/frontend_option1` directory contains a Gradio-based web interface for interacting with the deployed agents. The `README.md` in that directory provides more details.
 
 ## Disclaimer
 

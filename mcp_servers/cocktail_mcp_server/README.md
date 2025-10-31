@@ -1,28 +1,15 @@
 # Set Up MCP Server Using Cloud Run
 
+> **Note**: For step-by-step setup and deployment instructions, please refer to the main `README.md` file in the project root. This document provides additional context on the Cocktail MCP server.
+
 This guide walks you through deploying the Cocktail MCP server to Google Cloud Run.
 
-## Environment Setup
+## Component Guide
 
-Before deploying the service, you need to set up your environment variables. The `setup_env.sh` script is provided to simplify this process. 
+### Environment Setup
 
-```bash
-source ../setup_env.sh
-```
+The `setup_env.sh` script in the parent `mcp_servers` directory is used to set the `PROJECT_ID`, `PROJECT_NUMBER`, and `LOCATION` environment variables.
 
-This script will set the `PROJECT_ID`, `PROJECT_NUMBER`, and `LOCATION` environment variables.
+### Deployment
 
-## Deployment
-
-To deploy the Cocktail MCP server, execute the following command:
-
-```bash
-../deploy_cocktail.sh
-```
-
-This script will handle the entire deployment process, including:
-
--   Building the container image.
--   Deploying the service to Cloud Run.
--   Setting up the necessary environment variables.
--   Granting IAM permissions to the Agent Engine service account.
+The `deploy_cocktail.sh` script in the parent `mcp_servers` directory handles the deployment process. It builds the container image, deploys the service to Cloud Run, and grants the necessary IAM permissions to the Agent Engine service account.

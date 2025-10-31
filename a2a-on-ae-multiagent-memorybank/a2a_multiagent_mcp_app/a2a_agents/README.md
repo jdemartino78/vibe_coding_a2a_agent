@@ -1,5 +1,7 @@
 # A2A Multi-Agent System
 
+> **Note**: For step-by-step setup and deployment instructions, please refer to the main `README.md` file in the project root. This document provides additional context on the agent architecture.
+
 ## Overview
 
 This project implements a multi-agent system using the A2A (Agent-to-Agent) protocol and Google's Vertex AI. The system consists of an orchestrator agent and several specialized agents that work together to handle user requests.
@@ -55,31 +57,25 @@ The `CocktailAgent` is a specialized agent that provides information about cockt
 
 The `WeatherAgent` is a specialized agent that provides weather forecasts. It can retrieve the weather for a given city or state.
 
-## Getting Started
+## Component Guide
 
-1.  **Install dependencies:**
+1.  **Dependencies:**
 
-    ```bash
-    uv sync
-    ```
+    Project dependencies are managed by `uv` and are listed in `pyproject.toml`. They can be installed by running `uv sync`.
 
-2.  **Set up environment variables:**
+2.  **Environment Variables:**
 
-    Create a `.env` file by copying the `.env.example` file and populate it with the necessary credentials and agent URLs.
+    A `.env` file is used to configure credentials and agent URLs. An example is provided in `.env.example`.
 
-3.  **Deploy the agents:**
+3.  **Deployment Scripts:**
 
-    The agents can be deployed to Google's Agent Engine using the provided deployment scripts. See the "Deployment Scripts" section for more details.
+    The project includes Python scripts for deploying the agents to Google's Agent Engine:
 
-## Deployment Scripts
+    -   `deploy_cocktail_agent.py`: Deploys the Cocktail Agent.
+    -   `deploy_hosting_agent.py`: Deploys the Hosting Agent.
+    -   `deploy_weather_agent.py`: Deploys the Weather Agent.
 
-The project includes Python scripts for deploying the agents to Google's Agent Engine:
-
--   `deploy_cocktail_agent.py`: Deploys the Cocktail Agent.
--   `deploy_hosting_agent.py`: Deploys the Hosting Agent.
--   `deploy_weather_agent.py`: Deploys the Weather Agent.
-
-These scripts handle the entire deployment process, including creating the agent engine, configuring the service account, and setting up the necessary environment variables.
+    These scripts handle the entire deployment process, including creating the agent engine, configuring the service account, and setting up the necessary environment variables.
 
 ### Redeploying Agents
 

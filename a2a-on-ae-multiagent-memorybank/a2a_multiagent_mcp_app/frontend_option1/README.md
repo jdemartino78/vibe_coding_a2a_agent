@@ -1,50 +1,25 @@
 # A2A Multi-Agent Frontend
 
+> **Note**: For step-by-step setup and deployment instructions, please refer to the main `README.md` file in the project root. This document provides additional context on the frontend application.
+
 This is the frontend for the A2A Multi-Agent on Agent Engine application.
 
 > **⚠️ DISCLAIMER: THIS IS NOT AN OFFICIALLY SUPPORTED GOOGLE PRODUCT. THIS PROJECT IS INTENDED FOR DEMONSTRATION PURPOSES ONLY. IT IS NOT INTENDED FOR USE IN A PRODUCTION ENVIRONMENT.**
 
-## Prerequisites
+## Component Guide
 
-Before you begin, ensure you have the following:
+### Prerequisites
 
-*   A Google Cloud project with billing enabled.
-*   The [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) installed and authenticated.
-*   The `uv` Python package manager installed.
+This frontend requires a Google Cloud project with billing enabled, the `gcloud` SDK, and the `uv` Python package manager.
 
-## Getting Started
+### Environment Variables
 
-### 1. Create the `.env` file
+A `.env` file is used to configure the `PROJECT_ID`, `PROJECT_NUMBER`, and `AGENT_ENGINE_ID`. An example is provided in `.env.example`.
 
-Create a `.env` file by copying the `.env.example` file.
+### Execution
 
-```bash
-cp .env.example .env
-```
+The `deploy_frontend.sh` script can be used to run the application locally. When run with the `--mode local` flag, it starts a Gradio server available at `http://127.0.0.1:8080`.
 
-You will need to fill in the values for `PROJECT_ID`, `PROJECT_NUMBER`, and `AGENT_ENGINE_ID` in the `.env` file. You can get these values from your Google Cloud project.
+### Deployment
 
-### 2. Execution
-
-To run the application locally, execute the following command:
-
-```bash
-./deploy_frontend.sh --mode local
-```
-
-The application will be available at `http://127.0.0.1:8080`.
-
-## Deployment
-
-To deploy the application to Cloud Run, execute the following command:
-
-```bash
-./deploy_frontend.sh --mode cloudrun
-```
-
-The script will handle the entire deployment process, including:
-
--   Building the container image.
--   Deploying the service to Cloud Run.
--   Setting up the necessary environment variables.
--   Authorizing the Cloud Run service account.
+The `deploy_frontend.sh` script can also deploy the application to Cloud Run using the `--mode cloudrun` flag. The script handles building the container image, deploying the service, and setting up the necessary environment variables and IAM permissions.
