@@ -20,6 +20,10 @@ By the end of this session, you will be able to:
 ## Prerequisites
 - `gcloud` CLI
 - `uv` (Python package manager)
+- Install `uv` by following the instructions at https://github.com/astral-sh/uv#installation. For example, on Linux:
+  ```bash
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  ```
 - Python 3.12+
 - Docker
 - A Google Cloud Project with billing enabled.
@@ -85,30 +89,21 @@ Now we deploy the agents. The HostingAgent is our Orchestrator. It will find the
 
 Now, we will deploy our three agents to Vertex AI Agent Engine.
 
-1.  **Install Agent Dependencies:**
+1.  **Create and Activate Virtual Environment & Install Agent Dependencies:**
+    Navigate to the agents directory and create a virtual environment, then install dependencies:
     ```bash
-    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && uv sync)
+    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && uv venv && source .venv/bin/activate && uv sync)
     ```
 
-2.  **Deploy the Cocktail Agent:**
+2.  **Deploy All Agents:**
+    Ensure your `.env` file in `a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/` is correctly filled out with your `PROJECT_ID`, `PROJECT_NUMBER`, `GOOGLE_API_KEY`, and `BUCKET_NAME`.
+    Then, run the `deploy_agents.sh` script to deploy all agents:
     ```bash
-    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && python deploy_cocktail_agent.py)
+    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && ./deploy_agents.sh)
     ```
-    This script will deploy the agent and save its URL and Engine ID in the `.env` file.
+    This script will deploy the agents and save their URLs and Engine IDs in the `.env` file.
 
-3.  **Deploy the Weather Agent:**
-    ```bash
-    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && python deploy_weather_agent.py)
-    ```
-    This script will deploy the agent and save its URL in the `.env` file.
-
-4.  **Deploy the Hosting Agent:**
-    ```bash
-    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && python deploy_hosting_agent.py)
-    ```
-    This script deploys the main hosting agent that will orchestrate the other two. It will also save its URL and Engine ID in the `.env` file.
-
-5.  **Update Frontend `.env` file:**
+3.  **Update Frontend `.env` file:**
     Copy the `HOSTING_AGENT_ENGINE_ID` from `a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env` and paste it into the `.env` file in `a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env`.
 
 ### 4. Run the Frontend
