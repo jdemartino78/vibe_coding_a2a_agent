@@ -41,6 +41,9 @@ First, we need to configure the environment variables for our project.
 
 1.  **Configure MCP Servers Environment:**
     Open the file `mcp_servers/setup_env.sh` and replace the placeholder values for `PROJECT_ID` and `PROJECT_NUMBER` with your Google Cloud project details.
+    
+    ```cd vibe_coding_a2a_agent/
+    source ./mcp_servers/setup_env.sh```
 
 2.  **Configure A2A Agents Environment:**
     Navigate to the agents directory and copy the example `.env` file:
