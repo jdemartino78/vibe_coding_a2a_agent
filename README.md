@@ -35,6 +35,14 @@ By the end of this session, you will be able to:
 
 ## Step-by-Step Instructions
 
+### 0. Auth
+
+export PROJECT_ID='kohls-catalog-enrichment-2'
+export PROJECT_NUM='997110692467'
+gcloud auth login
+gcloud auth application-default login
+gcloud auth application-default set-quota-project $PROJECT_ID
+
 ### 1. Environment Setup
 
 First, we need to configure the environment variables for our project.
@@ -42,11 +50,9 @@ First, we need to configure the environment variables for our project.
 1.  **Configure MCP Servers Environment:**
     Open the file `mcp_servers/setup_env.sh` and replace the placeholder values for `PROJECT_ID` and `PROJECT_NUMBER` with your Google Cloud project details.
     
-    ```cd vibe_coding_a2a_agent/
-    source ./mcp_servers/setup_env.sh```
 
 2.  **Configure A2A Agents Environment:**
-    Navigate to the agents directory and copy the example `.env` file:
+    In the root directory, run the below to copy the example `.env.example` file:
     ```bash
     cp a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env.example a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env
     ```
@@ -59,11 +65,12 @@ First, we need to configure the environment variables for our project.
     ```
     Open the newly created `.env` file and fill in your `PROJECT_ID` and `PROJECT_NUMBER`. You will fill in the `HOSTING_AGENT_ENGINE_ID` later.
 
-4.  **Source Environment Variables:**
-    Source the `setup_env.sh` script to export the variables into your shell session:
-    ```bash
-    source mcp_servers/setup_env.sh
-    ```
+3.  **Permissions:**
+    
+     compute engine SA needs roles/artifactregistry.writer
+     
+     gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$PROJECT_NUM-compute@developer.gserviceaccount.com" --role="roles/artifactregistry.writer"
+
 
 ### 2. Deploy Tooling Servers (MCP Servers)
 
@@ -72,8 +79,10 @@ We are first deploying our MCP Servers. These are not agents. They are simple Cl
 These servers provide the tools that our agents will use (e.g., weather and cocktail APIs).
 
 1.  **Deploy the Cocktail MCP Server:**
+
     ```bash
-    ./mcp_servers/deploy_cocktail.sh
+    cd mcp_servers
+    ./deploy_cocktail.sh
     ```
     After the deployment is complete, copy the service URL from the output.
 
@@ -95,7 +104,7 @@ Now, we will deploy our three agents to Vertex AI Agent Engine.
 1.  **Create and Activate Virtual Environment & Install Agent Dependencies:**
     Navigate to the agents directory and create a virtual environment, then install dependencies:
     ```bash
-    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && uv venv && source .venv/bin/activate && uv sync)
+    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && uv venv && source .venv/bin/activate && uv sync --python 3.12)
     ```
 
 2.  **Deploy All Agents:**
