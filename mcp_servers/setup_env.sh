@@ -7,9 +7,9 @@ export SERVICE_NAME='cocktail-mcp-server'
 export LOCATION='us-central1'
 
 # Replace with your Google Cloud Project ID
-export PROJECT_ID='your-project-id'
+export PROJECT_ID='kohls-catalog-enrichment-2'
 
 # Replace with your Google Cloud Project Number
-export PROJECT_NUMBER='your-project-number'
+export PROJECT_NUMBER='997110692467'
 
 echo "Environment variables set."

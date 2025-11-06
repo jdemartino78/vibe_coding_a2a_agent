@@ -22,3 +22,8 @@ echo "All agents deployed."
 
 echo "Granting Agent Engine Service Agent Cloud Run Invoker"    
 gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:service-$PROJECT_NUMBER@gcp-sa-aiplatform-re.iam.gserviceaccount.com"  --role="roles/run.invoker"
+
+https://us-central1-aiplatform.googleapis.com/v1/projects/kohls-catalog-enrichment-2/locations/us-central1/reasoningEngines/752087943631339520:query
+
+cocktail
+https://us-central1-aiplatform.googleapis.com/v1/projects/kohls-catalog-enrichment-2/locations/us-central1/reasoningEngines/6280256486228623360:query
