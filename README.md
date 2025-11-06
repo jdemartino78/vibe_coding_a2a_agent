@@ -117,6 +117,10 @@ Now, we will deploy our three agents to Vertex AI Agent Engine.
 
 3.  **Update Frontend `.env` file:**
     Copy the `HOSTING_AGENT_ENGINE_ID` from `a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env` and paste it into the `.env` file in `a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env`.
+    
+    TODO: update deploy cocktail agent / weather agent / hostig agent . py to set vars here so user doesn't need to do manually
+    
+    a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env
 
 ### 4. Run the Frontend
 
