@@ -9,4 +9,4 @@ RUN uv sync --frozen
 
 EXPOSE $PORT
 
-CMD ["uv", "run", "weather_server.py"]
+CMD ["uv", "run", "python", "weather_server.py"]

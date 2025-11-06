@@ -37,19 +37,27 @@ By the end of this session, you will be able to:
 
 ### 1. Environment Setup
 
-First, we need to configure the environment variables for our project. Run the `configure.sh` script in the root of the project:
+First, configure the environment variables for the MCP Servers. Copy the example setup file:
+
+```bash
+cp mcp_servers/setup_env.sh.example mcp_servers/setup_env.sh
+```
+
+Next, open `mcp_servers/setup_env.sh` in a text editor and replace the placeholder values for `PROJECT_ID` and `PROJECT_NUMBER` with your actual Google Cloud project information.
+
+Once you have saved your changes, source the script to export the variables into your shell session:
+
+```bash
+source mcp_servers/setup_env.sh
+```
+
+After setting up the server environment, run the `configure.sh` script in the root of the project to configure the agent and frontend environments:
 
 ```bash
 ./configure.sh
 ```
 
-This script will prompt you for your `PROJECT_ID` and `PROJECT_NUMBER` and automatically configure all the necessary files.
-
-Next, source the `setup_env.sh` script to export the variables into your shell session:
-
-```bash
-source mcp_servers/setup_env.sh
-```
+This script will prompt you for your `PROJECT_ID` and `PROJECT_NUMBER` and automatically configure the necessary `.env` files for the A2A agents and the frontend application.
 
 ### 2. Deploy Tooling Servers (MCP Servers)
 

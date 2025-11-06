@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# This is an example file.
+# Copy this file to setup_env.sh and replace the placeholder values below.
+
+# NOTE: setup_env.sh is ignored by git to prevent accidental commitment of sensitive data.
+
+# Replace with your desired service name
+export SERVICE_NAME='cocktail-mcp-server'
+
+# Specify the Google Cloud region for deployment
+export LOCATION='us-central1'
+
+# Replace with your Google Cloud Project ID
+export PROJECT_ID='YOUR_PROJECT_ID'
+
+# Replace with your Google Cloud Project Number
+export PROJECT_NUMBER='YOUR_PROJECT_NUMBER'
+
+echo "Environment variables set."

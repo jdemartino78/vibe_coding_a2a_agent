@@ -9,4 +9,4 @@ RUN uv sync --frozen
 
 EXPOSE $PORT
 
-CMD ["uv", "run", "cocktail_server.py"]
+CMD ["uv", "run", "python", "cocktail_server.py"]
