@@ -151,6 +151,39 @@ Try asking it:
 - `Please list a random cocktail`
 - `What ingredients are in a Margarita?`
 
+TODO: 
+- deploy_frontend script (local vs cloudrun) not reading in correctly - always defaults to local 
+TODO: 
+- debug error An error occurred: 'AgentEngine' object has no attribute 'handle_authenticated_agent_card'
+Traceback (most recent call last):
+  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/main.py", line 142, in get_response_from_agent
+    remote_a2a_agent_card = await get_agent_card(remote_a2a_agent_resource_name)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/main.py", line 127, in get_agent_card
+    return await remote_a2a_agent.handle_authenticated_agent_card()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.venv/lib/python3.13/site-packages/pydantic/main.py", line 991, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'AgentEngine' object has no attribute 'handle_authenticated_agent_card'
+2025-11-06 19:29:57,992 - __main__ - INFO - Fetching agent card...
+2025-11-06 19:29:58,284 - httpx - INFO - HTTP Request: GET https://us-central1-aiplatform.googleapis.com/v1beta1/projects/997110692467/locations/us-central1/reasoningEngines/ "HTTP/1.1 200 OK"
+2025-11-06 19:29:58,285 - __main__ - ERROR - Error in get_response_from_agent (Type: AttributeError): 'AgentEngine' object has no attribute 'handle_authenticated_agent_card'
+Traceback (most recent call last):
+  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/main.py", line 142, in get_response_from_agent
+    remote_a2a_agent_card = await get_agent_card(remote_a2a_agent_resource_name)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/main.py", line 127, in get_agent_card
+    return await remote_a2a_agent.handle_authenticated_agent_card()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.venv/lib/python3.13/site-packages/pydantic/main.py", line 991, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'AgentEngine' object has no attribute 'handle_authenticated_agent_card'
+
+
+
+
+
+
 ## What We Just Built
 Congratulations! You have successfully built a multi-agent system.
 - A **Gradio Frontend** (our client)
