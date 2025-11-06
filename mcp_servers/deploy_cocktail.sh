@@ -15,6 +15,6 @@ gcloud run deploy $SERVICE_NAME \
 
 
 gcloud run services add-iam-policy-binding $SERVICE_NAME \
-    --member="serviceAccount:service-1077649599081@gcp-sa-aiplatform-re.iam.gserviceaccount.com" \
+    --member="serviceAccount:service-712747314987@gcp-sa-aiplatform-re.iam.gserviceaccount.com" \
     --role="roles/run.invoker" \
     --region="$LOCATION"

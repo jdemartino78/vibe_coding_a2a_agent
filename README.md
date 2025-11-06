@@ -37,30 +37,19 @@ By the end of this session, you will be able to:
 
 ### 1. Environment Setup
 
-First, we need to configure the environment variables for our project.
+First, we need to configure the environment variables for our project. Run the `configure.sh` script in the root of the project:
 
-1.  **Configure MCP Servers Environment:**
-    Open the file `mcp_servers/setup_env.sh` and replace the placeholder values for `PROJECT_ID` and `PROJECT_NUMBER` with your Google Cloud project details.
+```bash
+./configure.sh
+```
 
-2.  **Configure A2A Agents Environment:**
-    Navigate to the agents directory and copy the example `.env` file:
-    ```bash
-    cp a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env.example a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env
-    ```
-    Open the newly created `.env` file and fill in your `PROJECT_ID`, `PROJECT_NUMBER`, and `BUCKET_NAME`. You will fill in the server and agent URLs in the next steps.
+This script will prompt you for your `PROJECT_ID` and `PROJECT_NUMBER` and automatically configure all the necessary files.
 
-3.  **Configure Frontend Environment:**
-    Copy the example `.env` file for the frontend:
-    ```bash
-    cp a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env.example a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env
-    ```
-    Open the newly created `.env` file and fill in your `PROJECT_ID` and `PROJECT_NUMBER`. You will fill in the `HOSTING_AGENT_ENGINE_ID` later.
+Next, source the `setup_env.sh` script to export the variables into your shell session:
 
-4.  **Source Environment Variables:**
-    Source the `setup_env.sh` script to export the variables into your shell session:
-    ```bash
-    source mcp_servers/setup_env.sh
-    ```
+```bash
+source mcp_servers/setup_env.sh
+```
 
 ### 2. Deploy Tooling Servers (MCP Servers)
 
