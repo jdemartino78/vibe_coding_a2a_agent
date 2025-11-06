@@ -11,10 +11,5 @@ gcloud run deploy $SERVICE_NAME \
   --region $LOCATION \
   --project $PROJECT_ID \
   --memory 4G \
-  --no-allow-unauthenticated
+  #--no-allow-unauthenticated
 
-## MOVE BELOW TO LATER PART OF SCRIPT SINCE SA DOESN'T EXIST YET - done 
-# gcloud run services add-iam-policy-binding $SERVICE_NAME \
-#     --member="serviceAccount:service-$PROJECT_NUMBER@gcp-sa-aiplatform-re.iam.gserviceaccount.com" \
-#     --role="roles/run.invoker" \
-#     --region="$LOCATION"
