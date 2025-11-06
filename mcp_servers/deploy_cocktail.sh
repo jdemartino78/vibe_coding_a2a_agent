@@ -3,6 +3,9 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 source "$SCRIPT_DIR/setup_env.sh"
 
+# Change to the script's directory to ensure correct source path
+cd "$SCRIPT_DIR"
+
 # Set the service name for the cocktail server
 export SERVICE_NAME='cocktail-mcp-server'
 

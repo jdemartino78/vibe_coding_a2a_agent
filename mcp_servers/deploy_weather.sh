@@ -1,7 +1,11 @@
 #!/bin/bash
 
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /
+dev/null && pwd )"
 source "$SCRIPT_DIR/setup_env.sh"
+
+# Change to the script's directory to ensure correct source path
+cd "$SCRIPT_DIR"
 
 # Set the service name for the weather server
 export SERVICE_NAME='weather-remote-mcp-server'
