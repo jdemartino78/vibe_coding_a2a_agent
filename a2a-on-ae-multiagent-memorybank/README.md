@@ -75,8 +75,7 @@ The project requires the following to be installed:
 2.  gcloud SDK: [https://cloud.google.com/sdk/docs/install](https://cloud.google.com/sdk/docs/install)
 3.  `uv`: The Python package management tool used in this project.
 
-TODO: Give ai reasoning engine service agent Vertex AI user and cloud Run Invoker
-TODO: Give the Cloud Run service account Vertex AI User and Cloud RUn Invoker
+
 
 ### 1. MCP Servers
 
