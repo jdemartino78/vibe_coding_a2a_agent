@@ -32,6 +32,7 @@ By the end of this session, you will be able to:
     - Vertex AI
     - Cloud Build
     - Artifact Registry
+    - Telemetry API 
 
 ## Step-by-Step Instructions
 
@@ -42,6 +43,9 @@ export PROJECT_NUM='997110692467'
 gcloud auth login
 gcloud auth application-default login
 gcloud auth application-default set-quota-project $PROJECT_ID
+
+TODO: Give ai reasoning engine service agent Vertex AI user and cloud Run Invoker
+TODO: Give the Cloud Run service account Vertex AI User and Cloud RUn Invoker
 
 ### 1. Environment Setup
 
