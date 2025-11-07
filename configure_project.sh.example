@@ -1,0 +1,73 @@
+#!/bin/bash
+#
+# Copyright 2024 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# INSTRUCTIONS:
+# 1. Make a copy of this file named 'configure_project.sh'
+# 2. Replace the placeholder values for PROJECT_ID and PROJECT_NUMBER below.
+# 3. Run the script from the root of the repository: ./configure_project.sh
+# 4. Source the environment variables to your current session: source mcp_servers/setup_env.sh
+
+# --- SET THESE VALUES ---
+PROJECT_ID="your-gcp-project-id"
+PROJECT_NUMBER="your-gcp-project-number"
+# ------------------------
+
+# --- DO NOT EDIT BELOW THIS LINE ---
+
+# Validate that the variables have been changed
+if [ "$PROJECT_ID" == "your-gcp-project-id" ] || [ "$PROJECT_NUMBER" == "your-gcp-project-number" ]; then
+  echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+  echo "!!! PLEASE EDIT THIS SCRIPT AND REPLACE THE PLACEHOLDER VALUES FOR !!!"
+  echo "!!! PROJECT_ID AND PROJECT_NUMBER BEFORE RUNNING.                  !!!"
+  echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+  exit 1
+fi
+
+# Set file paths
+MCP_SERVERS_ENV_FILE="mcp_servers/setup_env.sh"
+AGENTS_ENV_EXAMPLE_FILE="a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env.example"
+AGENTS_ENV_FILE="a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env"
+FRONTEND_ENV_EXAMPLE_FILE="a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env.example"
+FRONTEND_ENV_FILE="a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env"
+
+# Configure MCP Servers environment
+echo "Configuring MCP Servers environment..."
+sed -i "s/PROJECT_ID=\"<your-project-id>\"/PROJECT_ID=\"$PROJECT_ID\"/" "$MCP_SERVERS_ENV_FILE"
+sed -i "s/PROJECT_NUMBER=\"<your-project-number>\"/PROJECT_NUMBER=\"$PROJECT_NUMBER\"/" "$MCP_SERVERS_ENV_FILE"
+
+# Configure A2A Agents environment
+echo "Configuring A2A Agents environment..."
+cp "$AGENTS_ENV_EXAMPLE_FILE" "$AGENTS_ENV_FILE"
+sed -i "s/PROJECT_ID=.*/PROJECT_ID=$PROJECT_ID/" "$AGENTS_ENV_FILE"
+sed -i "s/PROJECT_NUMBER=.*/PROJECT_NUMBER=$PROJECT_NUMBER/" "$AGENTS_ENV_FILE"
+sed -i "s/BUCKET_NAME=.*/BUCKET_NAME=${PROJECT_ID}-a2a-bucket/" "$AGENTS_ENV_FILE"
+
+# Configure Frontend environment
+echo "Configuring Frontend environment..."
+cp "$FRONTEND_ENV_EXAMPLE_FILE" "$FRONTEND_ENV_FILE"
+sed -i "s/PROJECT_ID=.*/PROJECT_ID=$PROJECT_ID/" "$FRONTEND_ENV_FILE"
+sed -i "s/PROJECT_NUMBER=.*/PROJECT_NUMBER=$PROJECT_NUMBER/" "$FRONTEND_ENV_FILE"
+
+echo "----------------------------------------------------------------------"
+echo "Configuration complete!"
+echo "Your GCP Project ID has been set to: $PROJECT_ID"
+echo "Your GCP Project Number has been set to: $PROJECT_NUMBER"
+echo ""
+echo "Next steps:"
+echo "1. Source the environment variables to your current session:"
+echo "   source mcp_servers/setup_env.sh"
+echo "2. Follow the remaining instructions in the README.md to deploy the system."
+echo "----------------------------------------------------------------------"

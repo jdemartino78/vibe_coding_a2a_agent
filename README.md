@@ -37,30 +37,32 @@ By the end of this session, you will be able to:
 
 ### 1. Environment Setup
 
-First, we need to configure the environment variables for our project.
+First, we need to configure the environment variables for our project. We've provided a script to simplify this process.
 
-1.  **Configure MCP Servers Environment:**
-    Open the file `mcp_servers/setup_env.sh` and replace the placeholder values for `PROJECT_ID` and `PROJECT_NUMBER` with your Google Cloud project details.
-
-2.  **Configure A2A Agents Environment:**
-    Navigate to the agents directory and copy the example `.env` file:
+1.  **Configure Project Details:**
+    Copy the example configuration script and edit it with your GCP project details:
     ```bash
-    cp a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env.example a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env
+    cp configure_project.sh.example configure_project.sh
+    # Open configure_project.sh and replace "your-gcp-project-id" and "your-gcp-project-number" with your actual values.
     ```
-    Open the newly created `.env` file and fill in your `PROJECT_ID`, `PROJECT_NUMBER`, and `BUCKET_NAME`. You will fill in the server and agent URLs in the next steps.
 
-3.  **Configure Frontend Environment:**
-    Copy the example `.env` file for the frontend:
+2.  **Run Configuration Script:**
+    Execute the script to set up the environment variables in the necessary files:
     ```bash
-    cp a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env.example a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env
+    ./configure_project.sh
     ```
-    Open the newly created `.env` file and fill in your `PROJECT_ID` and `PROJECT_NUMBER`. You will fill in the `HOSTING_AGENT_ENGINE_ID` later.
 
-4.  **Source Environment Variables:**
+3.  **Source Environment Variables:**
     Source the `setup_env.sh` script to export the variables into your shell session:
     ```bash
     source mcp_servers/setup_env.sh
     ```
+
+4.  **Update Agents `.env` file (after MCP server deployment):**
+    After deploying the MCP servers (Step 2), you will need to update the `CT_MCP_SERVER_URL` and `WEA_MCP_SERVER_URL` in `a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env` with the URLs obtained from the deployment output.
+
+5.  **Update Frontend `.env` file (after agent deployment):**
+    After deploying the A2A agents (Step 3), copy the `HOSTING_AGENT_ENGINE_ID` from `a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env` and paste it into the `.env` file in `a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env`.
 
 ### 2. Deploy Tooling Servers (MCP Servers)
 
