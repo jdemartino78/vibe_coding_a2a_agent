@@ -19,7 +19,7 @@ SERVICE_NAME="a2a-server-frontend"
 LOCATION="us-central1"
 
 # Default deployment mode is local.
-DEPLOY_MODE="cloudrun"
+DEPLOY_MODE="local"
 
 # --- Command Line Argument Parsing ---
 # Use -m or --mode to specify deployment mode: 'local', 'cloudrun', or 'help'.
