@@ -46,7 +46,12 @@ First, we need to configure the environment variables for our project. We've pro
     # Open configure_project.sh and replace "your-gcp-project-id" and "your-gcp-project-number" with your actual values.
     ```
 
-2.  **Run Configuration Script:**
+2.  **Make Configuration Script Executable:**
+    ```bash
+    chmod +x configure_project.sh
+    ```
+
+3.  **Run Configuration Script:**
     Execute the script to set up the environment variables in the necessary files:
     ```bash
     ./configure_project.sh
@@ -65,7 +70,12 @@ We are first deploying our MCP Servers. These are not agents. They are simple Cl
 
 These servers provide the tools that our agents will use (e.g., weather and cocktail APIs).
 
-1.  **Deploy the Cocktail MCP Server:**
+1.  **Authenticate gcloud:**
+    ```bash
+    gcloud auth login
+    ```
+
+2.  **Deploy the Cocktail MCP Server:**
     ```bash
     ./mcp_servers/deploy_cocktail.sh
     ```
