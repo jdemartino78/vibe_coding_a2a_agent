@@ -36,16 +36,28 @@ By the end of this session, you will be able to:
 
 ## Step-by-Step Instructions
 
-### 0. Auth
+### 0. Authentication
 
-export PROJECT_ID='kohls-catalog-enrichment-2'
-export PROJECT_NUM='997110692467'
-gcloud auth login
-gcloud auth application-default login
-gcloud auth application-default set-quota-project $PROJECT_ID
+Before proceeding, ensure your `gcloud` CLI is authenticated and configured for your Google Cloud project.
 
-TODO: Give ai reasoning engine service agent Vertex AI user and cloud Run Invoker
-TODO: Give the Cloud Run service account Vertex AI User and Cloud RUn Invoker
+1.  **Authenticate with Google Cloud:**
+    Log in to your Google Cloud account:
+    ```bash
+    gcloud auth login
+    ```
+
+2.  **Set Application Default Credentials:**
+    This command sets up credentials for applications to use Google Cloud APIs:
+    ```bash
+    gcloud auth application-default login
+    ```
+
+3.  **Set Quota Project:**
+    Configure the project to be used for billing and quota management:
+    ```bash
+    gcloud auth application-default set-quota-project $GOOGLE_CLOUD_PROJECT
+    ```
+    **Note:** `$GOOGLE_CLOUD_PROJECT` will be set after running `./configure.sh` in the next step.
 
 ### 1. Environment Setup
 
@@ -60,11 +72,43 @@ Then, run the configuration script. It will prompt you for your Google Cloud Pro
 ./configure.sh
 ```
 
-3.  **Permissions:**
-    
-     compute engine SA needs roles/artifactregistry.writer
-     
-     gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT --member="serviceAccount:$PROJECT_NUMBER-compute@developer.gserviceaccount.com" --role="roles/artifactregistry.writer"
+### 2. Grant IAM Permissions
+The following IAM roles are required for the Agent Engine Service Agent and the Compute Engine Service Account to interact correctly with Vertex AI and Cloud Run.
+
+*   **Agent Engine Service Agent:**
+    *   `roles/aiplatform.user` (Vertex AI User)
+    *   `roles/run.invoker` (Cloud Run Invoker)
+
+*   **Compute Engine Service Account:**
+    *   `roles/aiplatform.user` (Vertex AI User)
+    *   `roles/run.invoker` (Cloud Run Invoker)
+    *   `roles/artifactregistry.writer` (Artifact Registry Writer)
+
+Run the following commands to grant these permissions. The script will use the `GOOGLE_CLOUD_PROJECT` and `PROJECT_NUMBER` variables from the `.env` file you just created.
+
+```bash
+# Grant Vertex AI User and Cloud Run Invoker to the Agent Engine Service Account
+gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
+    --member="serviceAccount:service-$PROJECT_NUMBER@gcp-sa-aiplatform-re.iam.gserviceaccount.com" \
+    --role="roles/aiplatform.user"
+
+gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
+    --member="serviceAccount:service-$PROJECT_NUMBER@gcp-sa-aiplatform-re.iam.gserviceaccount.com" \
+    --role="roles/run.invoker"
+
+# Grant Vertex AI User, Cloud Run Invoker, and Artifact Registry Writer to the Compute Engine Service Account
+gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
+    --member="serviceAccount:$PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+    --role="roles/aiplatform.user"
+
+gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
+    --member="serviceAccount:$PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+    --role="roles/run.invoker"
+
+gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
+    --member="serviceAccount:$PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+    --role="roles/artifactregistry.writer"
+```
 
 
 ### 2. Deploy Tooling Servers (Model Context Protocol Servers)
