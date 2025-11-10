@@ -37,7 +37,7 @@ esac
 done
 
 # --- Load Environment Variables from .env file ---
-# This command sources the .env file to load PROJECT_ID, PROJECT_NUMBER, and AGENT_ENGINE_ID.
+# This command sources the .env file to load PROJECT_ID, PROJECT_NUMBER, and HOSTING_AGENT_ENGINE_ID=.
 # It's crucial that these variables are correctly set in the .env file located in this directory.
 echo "Loading environment variables from .env file..."
 if [ -f ".env" ]; then
@@ -51,7 +51,9 @@ else
 fi
 
 # Activate the main virtual environment
-source /usr/local/google/home/demart/vertex-ai-agents/a2a-on-ae-multiagent-memorybank/.venv/bin/activate
+source .venv/bin/activate
+
+# source /usr/local/google/home/demart/vertex-ai-agents/a2a-on-ae-multiagent-memorybank/.venv/bin/activate
 
 # --- Execute based on Deployment Mode ---
 case "$DEPLOY_MODE" in
@@ -79,15 +81,15 @@ case "$DEPLOY_MODE" in
             exit 1
         fi
 
-        if [ -z "$AGENT_ENGINE_ID" ]; then
-            echo "Error: AGENT_ENGINE_ID is not set in the .env file."
+        if [ -z "$HOSTING_AGENT_ENGINE_ID=" ]; then
+            echo "Error: HOSTING_AGENT_ENGINE_ID= is not set in the .env file."
             exit 1
         fi
 
         echo "Project ID: $PROJECT_ID"
         echo "Project Number: $PROJECT_NUMBER"
         echo "Location: $LOCATION"
-        echo "Agent Engine ID: $AGENT_ENGINE_ID"
+        echo "Agent Engine ID: $HOSTING_AGENT_ENGINE_ID="
         echo "Cloud Run Service Name: $SERVICE_NAME"
 
         echo "Deploying frontend service to Cloud Run..."
@@ -97,7 +99,7 @@ case "$DEPLOY_MODE" in
           --project "$PROJECT_ID" \
           --memory 2G \
           --no-allow-unauthenticated \
-          --update-env-vars=PROJECT_ID="$PROJECT_ID",AGENT_ENGINE_ID="$AGENT_ENGINE_ID",PROJECT_NUMBER="$PROJECT_NUMBER"
+          --update-env-vars=PROJECT_ID="$PROJECT_ID",HOSTING_AGENT_ENGINE_ID=="$HOSTING_AGENT_ENGINE_ID=",PROJECT_NUMBER="$PROJECT_NUMBER"
 
         if [ $? -eq 0 ]; then
             echo "Frontend service deployed successfully to Cloud Run."

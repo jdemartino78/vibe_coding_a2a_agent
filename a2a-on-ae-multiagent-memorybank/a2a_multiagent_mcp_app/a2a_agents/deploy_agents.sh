@@ -19,3 +19,7 @@ echo "Deploying Hosting Agent..."
 python deploy_hosting_agent.py
 
 echo "All agents deployed."
+
+echo "Granting Agent Engine Service Agent Cloud Run Invoker"    
+gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:service-$PROJECT_NUMBER@gcp-sa-aiplatform-re.iam.gserviceaccount.com"  --role="roles/run.invoker"
+

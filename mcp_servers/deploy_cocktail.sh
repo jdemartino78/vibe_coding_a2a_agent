@@ -7,14 +7,9 @@ source "$SCRIPT_DIR/setup_env.sh"
 export SERVICE_NAME='cocktail-mcp-server'
 
 gcloud run deploy $SERVICE_NAME \
-  --source ./cocktail_mcp_server \
+  --source $SCRIPT_DIR/cocktail_mcp_server \
   --region $LOCATION \
   --project $PROJECT_ID \
   --memory 4G \
   --no-allow-unauthenticated
 
-
-gcloud run services add-iam-policy-binding $SERVICE_NAME \
-    --member="serviceAccount:service-1077649599081@gcp-sa-aiplatform-re.iam.gserviceaccount.com" \
-    --role="roles/run.invoker" \
-    --region="$LOCATION"

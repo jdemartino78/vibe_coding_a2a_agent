@@ -32,8 +32,20 @@ By the end of this session, you will be able to:
     - Vertex AI
     - Cloud Build
     - Artifact Registry
+    - Telemetry API 
 
 ## Step-by-Step Instructions
+
+### 0. Auth
+
+export PROJECT_ID='kohls-catalog-enrichment-2'
+export PROJECT_NUM='997110692467'
+gcloud auth login
+gcloud auth application-default login
+gcloud auth application-default set-quota-project $PROJECT_ID
+
+TODO: Give ai reasoning engine service agent Vertex AI user and cloud Run Invoker
+TODO: Give the Cloud Run service account Vertex AI User and Cloud RUn Invoker
 
 ### 1. Environment Setup
 
@@ -41,9 +53,10 @@ First, we need to configure the environment variables for our project.
 
 1.  **Configure MCP Servers Environment:**
     Open the file `mcp_servers/setup_env.sh` and replace the placeholder values for `PROJECT_ID` and `PROJECT_NUMBER` with your Google Cloud project details.
+    
 
 2.  **Configure A2A Agents Environment:**
-    Navigate to the agents directory and copy the example `.env` file:
+    In the root directory, run the below to copy the example `.env.example` file:
     ```bash
     cp a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env.example a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env
     ```
@@ -56,11 +69,12 @@ First, we need to configure the environment variables for our project.
     ```
     Open the newly created `.env` file and fill in your `PROJECT_ID` and `PROJECT_NUMBER`. You will fill in the `HOSTING_AGENT_ENGINE_ID` later.
 
-4.  **Source Environment Variables:**
-    Source the `setup_env.sh` script to export the variables into your shell session:
-    ```bash
-    source mcp_servers/setup_env.sh
-    ```
+3.  **Permissions:**
+    
+     compute engine SA needs roles/artifactregistry.writer
+     
+     gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$PROJECT_NUM-compute@developer.gserviceaccount.com" --role="roles/artifactregistry.writer"
+
 
 ### 2. Deploy Tooling Servers (MCP Servers)
 
@@ -69,8 +83,10 @@ We are first deploying our MCP Servers. These are not agents. They are simple Cl
 These servers provide the tools that our agents will use (e.g., weather and cocktail APIs).
 
 1.  **Deploy the Cocktail MCP Server:**
+
     ```bash
-    ./mcp_servers/deploy_cocktail.sh
+    cd mcp_servers
+    ./deploy_cocktail.sh
     ```
     After the deployment is complete, copy the service URL from the output.
 
@@ -92,7 +108,7 @@ Now, we will deploy our three agents to Vertex AI Agent Engine.
 1.  **Create and Activate Virtual Environment & Install Agent Dependencies:**
     Navigate to the agents directory and create a virtual environment, then install dependencies:
     ```bash
-    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && uv venv && source .venv/bin/activate && uv sync)
+    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && uv venv && source .venv/bin/activate && uv sync --python 3.12)
     ```
 
 2.  **Deploy All Agents:**
@@ -105,6 +121,10 @@ Now, we will deploy our three agents to Vertex AI Agent Engine.
 
 3.  **Update Frontend `.env` file:**
     Copy the `HOSTING_AGENT_ENGINE_ID` from `a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env` and paste it into the `.env` file in `a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env`.
+    
+    TODO: update deploy cocktail agent / weather agent / hostig agent . py to set vars here so user doesn't need to do manually
+    
+    a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env
 
 ### 4. Run the Frontend
 
@@ -134,6 +154,39 @@ Try asking it:
 - `Please get weather forecast for New York`
 - `Please list a random cocktail`
 - `What ingredients are in a Margarita?`
+
+TODO: 
+- deploy_frontend script (local vs cloudrun) not reading in correctly - always defaults to local 
+TODO: 
+- debug error An error occurred: 'AgentEngine' object has no attribute 'handle_authenticated_agent_card'
+Traceback (most recent call last):
+  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/main.py", line 142, in get_response_from_agent
+    remote_a2a_agent_card = await get_agent_card(remote_a2a_agent_resource_name)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/main.py", line 127, in get_agent_card
+    return await remote_a2a_agent.handle_authenticated_agent_card()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.venv/lib/python3.13/site-packages/pydantic/main.py", line 991, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'AgentEngine' object has no attribute 'handle_authenticated_agent_card'
+2025-11-06 19:29:57,992 - __main__ - INFO - Fetching agent card...
+2025-11-06 19:29:58,284 - httpx - INFO - HTTP Request: GET https://us-central1-aiplatform.googleapis.com/v1beta1/projects/997110692467/locations/us-central1/reasoningEngines/ "HTTP/1.1 200 OK"
+2025-11-06 19:29:58,285 - __main__ - ERROR - Error in get_response_from_agent (Type: AttributeError): 'AgentEngine' object has no attribute 'handle_authenticated_agent_card'
+Traceback (most recent call last):
+  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/main.py", line 142, in get_response_from_agent
+    remote_a2a_agent_card = await get_agent_card(remote_a2a_agent_resource_name)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/main.py", line 127, in get_agent_card
+    return await remote_a2a_agent.handle_authenticated_agent_card()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.venv/lib/python3.13/site-packages/pydantic/main.py", line 991, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'AgentEngine' object has no attribute 'handle_authenticated_agent_card'
+
+
+
+
+
 
 ## What We Just Built
 Congratulations! You have successfully built a multi-agent system.

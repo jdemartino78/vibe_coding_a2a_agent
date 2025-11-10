@@ -75,6 +75,8 @@ The project requires the following to be installed:
 2.  gcloud SDK: [https://cloud.google.com/sdk/docs/install](https://cloud.google.com/sdk/docs/install)
 3.  `uv`: The Python package management tool used in this project.
 
+
+
 ### 1. MCP Servers
 
 The `mcp_servers` directory in the parent folder contains the backend tool servers for the Cocktail and Weather agents. These are deployed as Cloud Run services. The `README.md` in that directory provides more details.
