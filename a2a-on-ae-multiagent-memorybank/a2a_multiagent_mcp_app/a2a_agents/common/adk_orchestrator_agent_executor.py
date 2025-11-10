@@ -35,7 +35,10 @@ from google.genai import types
 
 from common.adk_orchestrator_agent import get_orchestrator_agent
 from common.auth_utils import GoogleAuth
-from common.adk_base_mcp_agent_executor import PersistentVertexAiMemoryBankService
+from common.adk_base_mcp_agent_executor import PersistentVertexAiMemoryBankService, _telemetry_enabled
+from vertexai.preview.reasoning_engines.templates.adk import (
+    _default_instrumentor_builder,
+)
 
 # Set logging
 logging.getLogger().setLevel(logging.INFO)
@@ -53,6 +56,8 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
     4. Error handling and recovery
     5. Agent engine configuration with custom memory topics
     """
+    # In-memory cache for mapping A2A context_id to ADK session objects.
+    CONTEXT_ID_TO_SESSION_MAP = {}
 
     def __init__(
         self, remote_agent_addresses: list[str], agent_engine_id: str = None
@@ -68,6 +73,15 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
         self.agent = None
         self.runner = None
         self.agent_engine_id = agent_engine_id
+
+        self.project_id = os.environ.get("PROJECT_ID")
+        self.location = os.environ.get("LOCATION")
+
+        _default_instrumentor_builder(
+            project_id=self.project_id,
+            enable_tracing=_telemetry_enabled(),
+            enable_logging=_telemetry_enabled(),
+        )
 
         if self.agent_engine_id is None:
             self.agent_engine_id = self.get_agent_engine()
@@ -148,8 +162,20 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
             await self._init_agent()
 
         # Extract the user's question from the protocol message
-        query = context.get_user_input()
-        logging.info(f"Received query: {query}")
+        raw_query = context.get_user_input()
+        logging.info(f"Received raw input: {raw_query}")
+
+        # Parse user_id from the raw query, with a fallback
+        user_id = "default-user"
+        query = raw_query
+        if raw_query.startswith("user_id::"):
+            parts = raw_query.split("::", 2)
+            if len(parts) == 3:
+                user_id = parts[1]
+                query = parts[2]
+        
+        logging.info(f"Using User ID: '{user_id}' for Query: '{query}'")
+
 
         # Create a TaskUpdater for managing task state
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
@@ -165,8 +191,8 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
 
         try:
             # Get or create a session for this conversation
-            session = await self._get_or_create_session(context.context_id)
-            logging.info(f"Using session: {session.id}")
+            session = await self._get_or_create_session(context.context_id, user_id=user_id)
+            logging.info(f"Using session: {session.id} for user: {user_id}")
 
             # Prepare the user message in ADK format
             content = types.Content(role=Role.user, parts=[types.Part(text=query)])
@@ -176,7 +202,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
             answer_sent = False
             async for event in self.runner.run_async(
                 session_id=session.id,
-                user_id="user",  # In production, use actual user ID
+                user_id=user_id,  # Use the parsed user ID
                 new_message=content,
             ):
                 # The agent may produce multiple events
@@ -209,41 +235,30 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
             # Re-raise for proper error handling up the stack
             raise
 
-    async def _get_or_create_session(self, context_id: str):
-        """Get existing session or create new one.
-
-        Note: For Vertex AI Session Service, we create a new session each time
-        because the A2A context_id format may not be compatible with Vertex AI's
-        session resource name requirements. The session service will generate
-        a valid session ID.
-        """
+    async def _get_or_create_session(self, context_id: str, user_id: str):
+        """Get existing session from cache or create a new one."""
+        if context_id in self.CONTEXT_ID_TO_SESSION_MAP:
+            logging.info(f"Found existing session for context {context_id}.")
+            return self.CONTEXT_ID_TO_SESSION_MAP[context_id]
+        
+        logging.info(f"Creating new session for context {context_id}.")
+        
         if isinstance(self.runner.session_service, InMemorySessionService):
             # For in-memory sessions, we can use the context_id directly
-            session = await self.runner.session_service.get_session(
+            session = await self.runner.session_service.create_session(
                 app_name=self.runner.app_name,
-                user_id="user",
+                user_id=user_id,
                 session_id=context_id,
             )
-
-            if not session:
-                logging.info(f"No session found for {context_id}, creating new one.")
-                session = await self.runner.session_service.create_session(
-                    app_name=self.runner.app_name,
-                    user_id="user",
-                    session_id=context_id,
-                )
-            else:
-                logging.info(f"Found existing session {context_id}.")
         else:
             # For Vertex AI Session Service, create a new session without passing session_id
             # Let Vertex AI generate a valid session resource name
-            logging.info(f"Creating new session for context {context_id}.")
             session = await self.runner.session_service.create_session(
                 app_name=self.runner.app_name,
-                user_id="user",
-                # Don't pass session_id - let Vertex AI generate a valid one
+                user_id=user_id,
             )
-
+        
+        self.CONTEXT_ID_TO_SESSION_MAP[context_id] = session
         return session
 
     def _extract_answer(self, event) -> str:

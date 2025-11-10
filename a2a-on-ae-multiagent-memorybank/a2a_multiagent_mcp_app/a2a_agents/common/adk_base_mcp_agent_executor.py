@@ -16,7 +16,7 @@ import logging
 import os
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, NoReturn
+from typing import Dict, NoReturn, Optional
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
@@ -47,7 +47,21 @@ from vertexai._genai.types import (
     MemoryBankCustomizationConfigMemoryTopicManagedMemoryTopic as ManagedMemoryTopic,
 )
 from vertexai._genai.types import ManagedTopicEnum
+from vertexai.preview.reasoning_engines.templates.adk import (
+    _default_instrumentor_builder,
+)
 
+
+def _telemetry_enabled() -> Optional[bool]:
+    """Return status of telemetry enablement depending on enablement env variable."""
+    env_value = os.getenv(
+        "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY", "unspecified"
+    ).lower()
+    if env_value in ("true", "1"):
+        return True
+    if env_value in ("false", "0"):
+        return False
+    return None
 
 def get_gcp_auth_headers(audience: str) -> Dict[str, str]:
     """
@@ -163,7 +177,7 @@ class PersistentVertexAiMemoryBankService(VertexAiMemoryBankService):
                     f"reasoningEngines/{self._agent_engine_id}/sessions/{session.id}"
                 )
             },
-            config={"wait_for_completion": True},
+            config={"wait_for_completion": False},
         )
         logging.info(f"Memory generation operation: {operation.name}")
 
@@ -226,6 +240,12 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
     4. Error handling and recovery
     5. MCP authentication and token management
     """
+    # In-memory cache for mapping A2A context_id to ADK session objects.
+    # Note: For a production system, a more robust, distributed cache like Redis
+    # or Memorystore would be necessary to handle multiple server instances and
+    # to manage memory by evicting old sessions. For this demo, a simple
+    # dictionary is sufficient.
+    CONTEXT_ID_TO_SESSION_MAP = {}
 
     def __init__(self, agent_engine_id: str = None) -> None:
         """Initialize with lazy loading pattern.
@@ -240,6 +260,12 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
 
         self.project_id = os.environ.get("PROJECT_ID")
         self.location = os.environ.get("LOCATION")
+
+        _default_instrumentor_builder(
+            project_id=self.project_id,
+            enable_tracing=_telemetry_enabled(),
+            enable_logging=_telemetry_enabled(),
+        )
 
         if self.agent_engine_id is None:
             self.agent_engine_id = self.get_agent_engine()
@@ -340,6 +366,7 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
                 Memory topics are configured in the agent engine (see get_agent_engine method).
                 Subclasses can override get_agent_engine to customize memory topics.
                 """
+                memory_callback_start_time = time.time()
                 session = callback_context._invocation_context.session
                 memory_service = callback_context._invocation_context.memory_service
 
@@ -358,7 +385,9 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
                         f"Memory generation failed for session {session.id}: {e}",
                         exc_info=True,
                     )
-
+                finally:
+                    memory_callback_end_time = time.time()
+                    logging.info(f"Memory generation callback time for session {session.id} (user {session.user_id}): {memory_callback_end_time - memory_callback_start_time:.2f} seconds")
             # Create the actual agent
             self.agent = LlmAgent(
                 model=config.get("model", "gemini-2.5-flash"),
@@ -399,43 +428,56 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
         1. A new message arrives (message/send)
         2. A streaming request is made (message/stream)
         """
-        # Initialize agent on first call
-        if self.agent is None:
-            self._init_agent()
-
-        # Extract the user's question from the protocol message
-        query = context.get_user_input()
-        logging.info(f"Received query: {query}")
-
-        # Create a TaskUpdater for managing task state
-        updater = TaskUpdater(event_queue, context.task_id, context.context_id)
-
-        # Update task status through its lifecycle
-        # submitted -> working -> completed/failed
-        if not context.current_task:
-            # New task - mark as submitted
-            await updater.submit()
-
-        # Mark task as working (processing)
-        await updater.start_work()
-
-        # Refresh MCP authentication headers before executing
-        self._refresh_mcp_auth()
-
+        start_time = time.time()
         try:
+            # Initialize agent on first call
+            if self.agent is None:
+                self._init_agent()
+
+            # Extract the user's question from the protocol message
+            raw_query = context.get_user_input()
+            logging.info(f"Received raw input: {raw_query}")
+
+            # Parse user_id from the raw query, with a fallback
+            user_id = "default-user"
+            query = raw_query
+            if raw_query.startswith("user_id::"):
+                parts = raw_query.split("::", 2)
+                if len(parts) == 3:
+                    user_id = parts[1]
+                    query = parts[2]
+            
+            logging.info(f"Using User ID: '{user_id}' for Query: '{query}'")
+
+            # Create a TaskUpdater for managing task state
+            updater = TaskUpdater(event_queue, context.task_id, context.context_id)
+
+            # Update task status through its lifecycle
+            # submitted -> working -> completed/failed
+            if not context.current_task:
+                # New task - mark as submitted
+                await updater.submit()
+
+            # Mark task as working (processing)
+            await updater.start_work()
+
+            # Refresh MCP authentication headers before executing
+            self._refresh_mcp_auth()
+
             # Get or create a session for this conversation
-            session = await self._get_or_create_session(context.context_id)
-            logging.info(f"Using session: {session.id}")
+            session = await self._get_or_create_session(context.context_id, user_id=user_id)
+            logging.info(f"Using session: {session.id} for user: {user_id}")
 
             # Prepare the user message in ADK format
             content = types.Content(role=Role.user, parts=[types.Part(text=query)])
 
             # Run the agent asynchronously
             # This may involve multiple LLM calls and tool uses
+            runner_start_time = time.time()
             answer_sent = False
             async for event in self.runner.run_async(
                 session_id=session.id,
-                user_id="user",  # In production, use actual user ID
+                user_id=user_id,  # Use the parsed user ID
                 new_message=content,
             ):
                 # The agent may produce multiple events
@@ -457,6 +499,8 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
                     await updater.complete()
                     answer_sent = True
                     # Don't break - continue consuming events to allow callbacks to execute
+            runner_end_time = time.time()
+            logging.info(f"ADK Runner execution time for task {context.task_id}: {runner_end_time - runner_start_time:.2f} seconds")
 
         except Exception as e:
             # Errors should never pass silently (Zen of Python)
@@ -467,6 +511,9 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
             )
             # Re-raise for proper error handling up the stack
             raise
+        finally:
+            end_time = time.time()
+            logging.info(f"Total execute time for task {context.task_id}: {end_time - start_time:.2f} seconds")
 
     def _refresh_mcp_auth(self) -> None:
         """Refresh MCP authentication headers using the token manager."""
@@ -485,17 +532,21 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
                     tool._connection_params.headers = fresh_headers
                     logging.debug("Refreshed MCP authentication headers")
 
-    async def _get_or_create_session(self, context_id: str):
-        """Get existing session or create new one."""
-        # For Vertex AI Session Service, don't pass session_id to get_session
-        # Instead, create a new session each time (stateless per A2A context)
-        logging.info(f"Creating new session for context {context_id}.")
-        session = await self.runner.session_service.create_session(
-            app_name=self.runner.app_name,
-            user_id="user",
-            # Don't pass session_id - let Vertex AI generate a valid one
-        )
-
+    async def _get_or_create_session(self, context_id: str, user_id: str):
+        """Get existing session from cache or create a new one."""
+        session_start_time = time.time()
+        if context_id in self.CONTEXT_ID_TO_SESSION_MAP:
+            logging.info(f"Found existing session for context {context_id}.")
+            session = self.CONTEXT_ID_TO_SESSION_MAP[context_id]
+        else:
+            logging.info(f"Creating new session for context {context_id}.")
+            session = await self.runner.session_service.create_session(
+                app_name=self.runner.app_name,
+                user_id=user_id,
+            )
+            self.CONTEXT_ID_TO_SESSION_MAP[context_id] = session
+        session_end_time = time.time()
+        logging.info(f"Session management time for context {context_id}: {session_end_time - session_start_time:.2f} seconds")
         return session
 
     def _extract_answer(self, event) -> str:

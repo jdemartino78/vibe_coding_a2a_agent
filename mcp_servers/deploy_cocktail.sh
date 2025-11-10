@@ -21,5 +21,6 @@ gcloud run deploy $SERVICE_NAME \
   --region $GOOGLE_CLOUD_LOCATION \
   --project $GOOGLE_CLOUD_PROJECT \
   --memory 4G \
+  --min-instances=1 \
   --no-allow-unauthenticated
 
