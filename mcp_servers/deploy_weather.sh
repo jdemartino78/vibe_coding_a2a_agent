@@ -11,5 +11,5 @@ gcloud run deploy $SERVICE_NAME \
   --region $LOCATION \
   --project $PROJECT_ID \
   --memory 4G \
-  #--no-allow-unauthenticated
+  --no-allow-unauthenticated
 
