@@ -45,8 +45,8 @@ FRONTEND_ENV_FILE="a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/fronte
 
 # Configure MCP Servers environment
 echo "Configuring MCP Servers environment..."
-sed -i "s/PROJECT_ID=\"<your-project-id>\"/PROJECT_ID=\"$PROJECT_ID\"/" "$MCP_SERVERS_ENV_FILE"
-sed -i "s/PROJECT_NUMBER=\"<your-project-number>\"/PROJECT_NUMBER=\"$PROJECT_NUMBER\"/" "$MCP_SERVERS_ENV_FILE"
+sed -i "s/PROJECT_ID='your-project-id'/PROJECT_ID='$PROJECT_ID'/" "$MCP_SERVERS_ENV_FILE"
+sed -i "s/PROJECT_NUMBER='your-project-number'/PROJECT_NUMBER='$PROJECT_NUMBER'/" "$MCP_SERVERS_ENV_FILE"
 
 # Configure A2A Agents environment
 echo "Configuring A2A Agents environment..."
