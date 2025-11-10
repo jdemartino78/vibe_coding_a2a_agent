@@ -9,14 +9,14 @@
 # To deploy to Cloud Run (default): ./deploy_frontend.sh --mode cloudrun
 # For help: ./deploy_frontend.sh --mode help
 
-# --- Configuration Variables ---
-# Define the name for your Cloud Run service.
-# This should be unique within your Google Cloud project and region.
-SERVICE_NAME="a2a-server-frontend"
+# Determine the project root directory.
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+PROJECT_ROOT="$SCRIPT_DIR/../../.."
 
-# Specify the Google Cloud region for deployment.
-# Ensure this matches the region where your Agent Engine agents are deployed.
-LOCATION="us-central1"
+# Load environment variables from the root .env file
+set -a
+source "$PROJECT_ROOT/.env"
+set +a
 
 # Default deployment mode is local.
 DEPLOY_MODE="local"
@@ -35,20 +35,6 @@ case $i in
     ;;
 esac
 done
-
-# --- Load Environment Variables from .env file ---
-# This command sources the .env file to load PROJECT_ID, PROJECT_NUMBER, and HOSTING_AGENT_ENGINE_ID=.
-# It's crucial that these variables are correctly set in the .env file located in this directory.
-echo "Loading environment variables from .env file..."
-if [ -f ".env" ]; then
-    # Use sed to clean up the .env file content before exporting
-    # This handles comments, empty lines, and removes quotes around values.
-    export $(sed -e '/^ *#/d' -e '/^$/d' -e 's/ *= */=/' -e "s/'//g" -e 's/"//g' .env | xargs)
-    echo "Environment variables loaded."
-else
-    echo "Error: .env file not found. Please create one based on .env.example and populate it."
-    exit 1
-fi
 
 # Activate the main virtual environment
 source .venv/bin/activate
@@ -71,8 +57,8 @@ case "$DEPLOY_MODE" in
     "cloudrun")
         # --- Validate Essential Environment Variables (for Cloud Run mode) ---
         # Ensure that the required variables are present if deploying to Cloud Run.
-        if [ -z "$PROJECT_ID" ]; then
-            echo "Error: PROJECT_ID is not set in the .env file."
+        if [ -z "$GOOGLE_CLOUD_PROJECT" ]; then
+            echo "Error: GOOGLE_CLOUD_PROJECT is not set in the .env file."
             exit 1
         fi
 
@@ -81,25 +67,25 @@ case "$DEPLOY_MODE" in
             exit 1
         fi
 
-        if [ -z "$HOSTING_AGENT_ENGINE_ID=" ]; then
-            echo "Error: HOSTING_AGENT_ENGINE_ID= is not set in the .env file."
+        if [ -z "$HOSTING_AGENT_ENGINE_ID" ]; then
+            echo "Error: HOSTING_AGENT_ENGINE_ID is not set in the .env file."
             exit 1
         fi
 
-        echo "Project ID: $PROJECT_ID"
+        echo "Project ID: $GOOGLE_CLOUD_PROJECT"
         echo "Project Number: $PROJECT_NUMBER"
-        echo "Location: $LOCATION"
-        echo "Agent Engine ID: $HOSTING_AGENT_ENGINE_ID="
-        echo "Cloud Run Service Name: $SERVICE_NAME"
+        echo "Location: $GOOGLE_CLOUD_LOCATION"
+        echo "Agent Engine ID: $HOSTING_AGENT_ENGINE_ID"
+        echo "Cloud Run Service Name: $FRONTEND_SERVICE_NAME"
 
         echo "Deploying frontend service to Cloud Run..."
-        gcloud run deploy "$SERVICE_NAME" \
+        gcloud run deploy "$FRONTEND_SERVICE_NAME" \
           --source . \
-          --region "$LOCATION" \
-          --project "$PROJECT_ID" \
+          --region "$GOOGLE_CLOUD_LOCATION" \
+          --project "$GOOGLE_CLOUD_PROJECT" \
           --memory 2G \
           --no-allow-unauthenticated \
-          --update-env-vars=PROJECT_ID="$PROJECT_ID",HOSTING_AGENT_ENGINE_ID=="$HOSTING_AGENT_ENGINE_ID=",PROJECT_NUMBER="$PROJECT_NUMBER"
+          --update-env-vars=PROJECT_ID="$GOOGLE_CLOUD_PROJECT",HOSTING_AGENT_ENGINE_ID="$HOSTING_AGENT_ENGINE_ID",PROJECT_NUMBER="$PROJECT_NUMBER"
 
         if [ $? -eq 0 ]; then
             echo "Frontend service deployed successfully to Cloud Run."
@@ -109,11 +95,11 @@ case "$DEPLOY_MODE" in
         fi
 
         echo "Authorizing Cloud Run service account..."
-        gcloud run services add-iam-policy-binding "$SERVICE_NAME" \
+        gcloud run services add-iam-policy-binding "$FRONTEND_SERVICE_NAME" \
             --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
             --role="roles/run.invoker" \
-            --region="$LOCATION" \
-            --project="$PROJECT_ID"
+            --region="$GOOGLE_CLOUD_LOCATION" \
+            --project="$GOOGLE_CLOUD_PROJECT"
 
         if [ $? -eq 0 ]; then
             echo "Cloud Run service account authorized successfully."
