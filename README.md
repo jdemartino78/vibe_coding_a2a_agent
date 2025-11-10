@@ -58,11 +58,6 @@ First, we need to configure the environment variables for our project. We've pro
     source mcp_servers/setup_env.sh
     ```
 
-4.  **Update Agents `.env` file (after MCP server deployment):**
-    After deploying the MCP servers (Step 2), you will need to update the `CT_MCP_SERVER_URL` and `WEA_MCP_SERVER_URL` in `a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env` with the URLs obtained from the deployment output.
-
-5.  **Update Frontend `.env` file (after agent deployment):**
-    After deploying the A2A agents (Step 3), copy the `HOSTING_AGENT_ENGINE_ID` from `a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env` and paste it into the `.env` file in `a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env`.
 
 ### 2. Deploy Tooling Servers (MCP Servers)
 
