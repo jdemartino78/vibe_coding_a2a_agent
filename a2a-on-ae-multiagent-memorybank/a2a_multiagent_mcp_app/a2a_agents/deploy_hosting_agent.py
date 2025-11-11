@@ -163,6 +163,8 @@ remote_a2a_agent = client.agent_engines.update(
             "WEA_AGENT_URL": WEA_AGENT_URL,
             "PROJECT_ID": PROJECT_ID,
             "LOCATION": LOCATION,
+            "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY": "true",
+            "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT": "true",
         },
         "extra_packages": ["hosting_agent/", "common/"],
     },

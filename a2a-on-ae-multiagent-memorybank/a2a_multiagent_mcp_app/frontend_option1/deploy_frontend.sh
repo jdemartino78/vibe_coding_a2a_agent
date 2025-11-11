@@ -23,17 +23,21 @@ DEPLOY_MODE="local"
 
 # --- Command Line Argument Parsing ---
 # Use -m or --mode to specify deployment mode: 'local', 'cloudrun', or 'help'.
-for i in "$@"
-do
-case $i in
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -m|--mode)
+      DEPLOY_MODE="$2"
+      shift 2
+      ;;
     -m=*|--mode=*)
-    DEPLOY_MODE="${i#*=}"
-    shift # past argument=value
-    ;;
+      DEPLOY_MODE="${1#*=}"
+      shift 1
+      ;;
     *)
-          # unknown option
-    ;;
-esac
+      # unknown option
+      shift
+      ;;
+  esac
 done
 
 # Activate the main virtual environment

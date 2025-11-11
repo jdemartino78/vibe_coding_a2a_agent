@@ -16,7 +16,9 @@
 import asyncio
 import logging
 import os
-from typing import AsyncIterator, List
+import time
+import uuid
+from typing import AsyncIterator, List, Tuple
 
 import gradio as gr
 import httpx
@@ -53,7 +55,8 @@ LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
 # Initialize Vertex AI session
 vertexai.init(project=PROJECT_ID, location=LOCATION)
 
-client = vertexai.Client(
+# This is a global client for fetching the agent card, not for conversations
+global_vertex_client = vertexai.Client(
     project=PROJECT_ID,
     location=LOCATION,
     http_options=genai_types.HttpOptions(
@@ -68,20 +71,10 @@ remote_a2a_agent_resource_name = (
 
 
 class GoogleAuth(httpx.Auth):
-    """A custom httpx Auth class for Google Cloud authentication.
-
-    This class implements httpx's Auth interface to automatically handle
-    Google Cloud authentication by:
-    1. Using Application Default Credentials (ADC)
-    2. Automatically refreshing expired tokens
-    3. Adding the Authorization header to all requests
-    """
+    """A custom httpx Auth class for Google Cloud authentication."""
 
     def __init__(self) -> None:
-        """Initializes the GoogleAuth instance with default credentials.
-
-        Uses Application Default Credentials with cloud-platform scope.
-        """
+        """Initializes the GoogleAuth instance with default credentials."""
         self.credentials: Credentials
         self.project: str | None
         self.credentials, self.project = default(
@@ -90,180 +83,227 @@ class GoogleAuth(httpx.Auth):
         self.auth_request = AuthRequest()
 
     def auth_flow(self, request: httpx.Request):
-        """Adds the Authorization header to the request.
-
-        Args:
-            request: The httpx request to add the header to.
-
-        Yields:
-            The request with the Authorization header added.
-        """
-        # Refresh the credentials if they are expired
+        """Adds the Authorization header to the request."""
         if not self.credentials.valid:
             logger.info("Credentials expired, refreshing...")
             self.credentials.refresh(self.auth_request)
-
-        # Add the Authorization header to the request
         request.headers["Authorization"] = f"Bearer {self.credentials.token}"
         yield request
 
 
 async def get_agent_card(resource_name: str) -> object:
-    """Fetches the agent card from Vertex AI.
-
-    Args:
-        resource_name: The full resource name of the agent engine.
-
-    Returns:
-        The agent card object.
-    """
+    """Fetches the agent card from Vertex AI."""
     config = {"http_options": {"base_url": f"https://{LOCATION}-aiplatform.googleapis.com"}}
-
-    remote_a2a_agent = client.agent_engines.get(
-        name=resource_name,
-        config=config,
-    )
-
+    remote_a2a_agent = global_vertex_client.agent_engines.get(name=resource_name, config=config)
     return await remote_a2a_agent.handle_authenticated_agent_card()
 
 
 async def get_response_from_agent(
     query: str,
-    history: List[gr.ChatMessage],
-) -> AsyncIterator[gr.ChatMessage]:
-    """Get response from host agent."""
-
-    a2a_client: Client = None  # Define client for the finally block
-    httpx_client: httpx.AsyncClient = None  # Define httpx_client for the finally block
-
+    user_id: str,
+    a2a_client: Client,
+    context_id: str,
+) -> AsyncIterator[str]:
+    """Get response from host agent using a persistent client. Yields streamed text chunks."""
     try:
-        # --- 1. Get Agent Card ---
-        logger.info("Fetching agent card...")
-        remote_a2a_agent_card = await get_agent_card(remote_a2a_agent_resource_name)
-        logger.info("Agent card fetched successfully")
-
-        # --- 2. Create HTTP Client with Auth ---
-        httpx_client = httpx.AsyncClient(
-            timeout=120,
-            auth=GoogleAuth(),
-        )
-
-        # --- 3. Create A2A Client ---
-        factory = ClientFactory(
-            ClientConfig(
-                supported_transports=[TransportProtocol.http_json],
-                use_client_preference=True,
-                httpx_client=httpx_client,  # Pass the authenticated client
-            )
-        )
-        a2a_client = factory.create(remote_a2a_agent_card)
-        logger.info("A2A client created successfully")
-
-        # --- 4. Create Message ---
+        # Format the query to include the user_id for the backend to parse
+        formatted_query = f"user_id::{user_id}::{query}"
         message = Message(
             message_id=f"message-{os.urandom(8).hex()}",
             role=Role.user,
-            parts=[Part(root=TextPart(text=query))],  # Simplified: just pass the query
+            parts=[Part(root=TextPart(text=formatted_query))],
+            context_id=context_id,
         )
 
-        # --- 5. Send Message and Stream Response ---
-        logger.info(f"Sending message to agent: {query}")
+        logger.info(f"Sending message to agent for user '{user_id}' in context '{context_id}': {query}")
         response_stream = a2a_client.send_message(message)
 
-        final_result_text = None
-
-        # Iterate over the async generator which yields task status updates
+        full_response_text = ""
+        response_yielded = False
         async for response_chunk in response_stream:
-            task_object = response_chunk[0]  # Task object is the first element
+            task_object = response_chunk[0]
 
-            logger.debug(f"Received task update. Status: {task_object.status.state}")
+            # New logic to handle streaming artifacts
+            if hasattr(task_object, "artifacts") and task_object.artifacts:
+                for artifact in task_object.artifacts:
+                    if artifact.name == "answer_chunk" and artifact.parts and isinstance(artifact.parts[0].root, TextPart):
+                        new_chunk = artifact.parts[0].root.text
+                        full_response_text += new_chunk
+                        yield full_response_text
+                        response_yielded = True
 
-            # Wait for the task to complete
             if task_object.status.state == TaskState.completed:
-                logger.info("Task completed. Checking for artifacts...")
+                # The final answer might be in a separate artifact
                 if hasattr(task_object, "artifacts") and task_object.artifacts:
                     for artifact in task_object.artifacts:
-                        # Find the first text part in the artifacts
-                        if artifact.parts and isinstance(artifact.parts[0].root, TextPart):
-                            final_result_text = artifact.parts[0].root.text
-                            logger.info(f"Found artifact text: {final_result_text[:50]}...")
-                            break  # Stop looking at artifacts
-                if final_result_text:
-                    break  # Stop iterating task updates
-
-            # Handle task failure
+                        if artifact.name == "answer" and artifact.parts and isinstance(artifact.parts[0].root, TextPart):
+                            final_text = artifact.parts[0].root.text
+                            if final_text != full_response_text: # Append if different
+                                full_response_text = final_text
+                                yield full_response_text
+                                response_yielded = True
+                break # End of stream
             elif task_object.status.state == TaskState.failed:
                 error_message = f"Task failed: {task_object.status.message if task_object.status else 'Unknown error'}"
                 logger.error(error_message)
-                yield gr.ChatMessage(role="assistant", content=error_message)
-                return  # Exit the generator
+                yield error_message
+                return
 
-        # --- 6. Yield Final Response ---
-        if final_result_text:
-            yield gr.ChatMessage(role="assistant", content=final_result_text)
-        else:
-            logger.warning("Task finished but no text artifact was found")
-            yield gr.ChatMessage(
-                role="assistant",
-                content="I processed your request but found no text response.",
-            )
+        if not response_yielded:
+            logger.warning("Stream finished but no text artifact was found")
+            yield "I processed your request but found no text response."
 
     except Exception as e:
-        logger.error(
-            f"Error in get_response_from_agent (Type: {type(e).__name__}): {e}", exc_info=True
-        )
-        yield gr.ChatMessage(
-            role="assistant",
-            content=f"An error occurred: {e}",
-        )
-    finally:
-        # --- 7. Clean up clients ---
-        # Close the A2A client, which also closes the httpx_client it manages
-        if a2a_client:
-            await a2a_client.close()
-            logger.debug("A2A client closed")
-        elif httpx_client:
-            # Fallback if a2a_client creation failed but httpx_client was made
-            await httpx_client.aclose()
-            logger.debug("HTTPX client closed")
+        logger.error(f"Error in get_response_from_agent: {e}", exc_info=True)
+        yield f"An error occurred: {e}"
 
 
 async def main() -> None:
     """Main gradio app that launches the Gradio interface."""
 
     with gr.Blocks(theme=gr.themes.Ocean(), title="A2A Host Agent") as demo:
-        # Using gr.Markdown to center the image and title
-        with gr.Row():
-            gr.Image(
-                "static/a2a.png",
-                width=100,
-                height=100,
-                scale=0,
-                show_label=False,
-                show_download_button=False,
-                container=False,
-                show_fullscreen_button=False,
-                elem_classes=["centered-image"],  # Requires custom CSS
-            )
+        # State to hold session-specific data
+        user_id_state = gr.State(value=None)
+        context_id_state = gr.State(value=None)
+        a2a_client_state = gr.State(value=None)
+        httpx_client_state = gr.State(value=None)
 
-        gr.ChatInterface(
-            get_response_from_agent,
-            title="A2A Host Agent",
-            description="This assistant can help you to check weather and find cocktail information",
+        # --- Login View ---
+        with gr.Group(visible=True) as login_view:
+            with gr.Row():
+                gr.Image("static/a2a.png", width=100, height=100, scale=0, show_label=False, show_download_button=False, container=False, show_fullscreen_button=False)
+            user_id_input = gr.Textbox(
+                label="Enter User ID to Start",
+                placeholder="e.g., user-jane-doe",
+                elem_id="user_id_input"
+            )
+            start_button = gr.Button("Start Chat Session")
+
+        # --- Chat View ---
+        with gr.Group(visible=False) as chat_view:
+            gr.Markdown("## A2A Host Agent")
+            chatbot = gr.Chatbot(label="Conversation", elem_id="chatbot", height=500)
+            msg_input = gr.Textbox(
+                label="Your Message",
+                placeholder="Ask about weather or cocktails...",
+                scale=4
+            )
+            send_button = gr.Button("Send")
+            change_user_button = gr.Button("End Session & Change User")
+
+        # --- Event Handlers ---
+        async def start_chat_session(user_id):
+            """Handles the 'Start Chat' button click. Creates and stores clients."""
+            if not user_id:
+                return {}
+            
+            start_time = time.time()
+            logger.info(f"Starting chat session for user: {user_id}")
+            
+            # Create clients for this session
+            try:
+                remote_a2a_agent_card = await get_agent_card(remote_a2a_agent_resource_name)
+                httpx_client = httpx.AsyncClient(timeout=120, auth=GoogleAuth())
+                factory = ClientFactory(
+                    ClientConfig(
+                        supported_transports=[TransportProtocol.http_json],
+                        use_client_preference=True,
+                        httpx_client=httpx_client,
+                    )
+                )
+                a2a_client = factory.create(remote_a2a_agent_card)
+                context_id = str(uuid.uuid4())
+                logger.info(f"New context ID for session: {context_id}")
+
+                end_time = time.time()
+                logger.info(f"Session startup time for user {user_id}: {end_time - start_time:.2f} seconds")
+
+                return {
+                    user_id_state: user_id,
+                    context_id_state: context_id,
+                    a2a_client_state: a2a_client,
+                    httpx_client_state: httpx_client,
+                    login_view: gr.update(visible=False),
+                    chat_view: gr.update(visible=True),
+                }
+            except Exception as e:
+                logger.error(f"Failed to create A2A client: {e}", exc_info=True)
+                gr.Warning(f"Failed to start session: {e}")
+                return {}
+
+        async def add_message_and_get_response(message, chat_history, user_id, context_id, a2a_client):
+            """Handles sending a message and streaming the response."""
+            if not all([user_id, context_id, a2a_client]):
+                error_msg = "ERROR: Session not initialized. Please end session and restart."
+                chat_history.append((message, error_msg))
+                yield chat_history, ""
+                return
+
+            chat_history.append((message, ""))
+            yield chat_history, ""
+
+            response_generator = get_response_from_agent(
+                query=message, user_id=user_id, a2a_client=a2a_client, context_id=context_id
+            )
+            async for chunk in response_generator:
+                chat_history[-1] = (message, chunk)
+                yield chat_history, ""
+
+        async def end_chat_session(a2a_client, httpx_client):
+            """Handles the 'Change User' button click. Cleans up clients."""
+            logger.info("Ending chat session.")
+            try:
+                if a2a_client:
+                    await a2a_client.close()
+                    logger.info("A2A client closed.")
+                elif httpx_client:
+                    await httpx_client.aclose()
+                    logger.info("HTTPX client closed as fallback.")
+            except Exception as e:
+                logger.error(f"Error closing clients: {e}", exc_info=True)
+                gr.Warning(f"Error during session cleanup: {e}")
+
+            return {
+                user_id_state: None,
+                context_id_state: None,
+                a2a_client_state: None,
+                httpx_client_state: None,
+                chatbot: [],
+                login_view: gr.update(visible=True),
+                chat_view: gr.update(visible=False),
+            }
+
+        # --- Wire up components to handlers ---
+        start_button.click(
+            start_chat_session,
+            inputs=[user_id_input],
+            outputs=[user_id_state, context_id_state, a2a_client_state, httpx_client_state, login_view, chat_view],
+        )
+
+        msg_input.submit(
+            add_message_and_get_response,
+            inputs=[msg_input, chatbot, user_id_state, context_id_state, a2a_client_state],
+            outputs=[chatbot, msg_input],
+        )
+        send_button.click(
+            add_message_and_get_response,
+            inputs=[msg_input, chatbot, user_id_state, context_id_state, a2a_client_state],
+            outputs=[chatbot, msg_input],
+        )
+
+        change_user_button.click(
+            end_chat_session,
+            inputs=[a2a_client_state, httpx_client_state],
+            outputs=[user_id_state, context_id_state, a2a_client_state, httpx_client_state, chatbot, login_view, chat_view],
         )
 
     logger.info("Launching Gradio interface on http://0.0.0.0:8080")
-    demo.queue().launch(
-        server_name="0.0.0.0",
-        server_port=8080,
-    )
+    demo.queue().launch(server_name="0.0.0.0", server_port=8080)
     logger.info("Gradio application has been shut down")
 
 
 if __name__ == "__main__":
-    # Create the 'static' directory if it doesn't exist for the image
     if not os.path.exists("static"):
         os.makedirs("static")
         logger.info("Created 'static' directory. Please add your 'a2a.png' image there.")
-
     asyncio.run(main())

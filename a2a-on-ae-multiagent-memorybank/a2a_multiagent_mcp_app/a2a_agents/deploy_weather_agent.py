@@ -74,7 +74,7 @@ logger.info(f"Using Project ID: {PROJECT_ID}")
 logger.info(f"Using Project Number: {PROJECT_NUMBER}")
 logger.info(f"Using Location: {LOCATION}")
 logger.info(f"Using Staging Bucket: {BUCKET_URI}")
-logger.info(f"Using Weather MCP Server URL: {WEA_MCP_SERVER_URL}")
+logger.info(f"Using Weather MCP Server URL:. {WEA_MCP_SERVER_URL}")
 
 # --- Initialize Vertex AI Session ---
 # This sets up the connection to Google Cloud's Vertex AI services.
@@ -158,6 +158,8 @@ remote_a2a_agent = client.agent_engines.update(
             "WEA_MCP_SERVER_URL": WEA_MCP_SERVER_URL,
             "PROJECT_ID": PROJECT_ID,
             "LOCATION": LOCATION,
+            "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY": "true",
+            "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT": "true"
         },
         "extra_packages": ["weather_agent/", "common/"]
     },
