@@ -36,68 +36,108 @@ By the end of this session, you will be able to:
 
 ## Step-by-Step Instructions
 
-### 0. Auth
+### 0. Authentication
 
-export PROJECT_ID='kohls-catalog-enrichment-2'
-export PROJECT_NUM='997110692467'
-gcloud auth login
-gcloud auth application-default login
-gcloud auth application-default set-quota-project $PROJECT_ID
+Before proceeding, ensure your `gcloud` CLI is authenticated and configured for your Google Cloud project.
 
-TODO: Give ai reasoning engine service agent Vertex AI user and cloud Run Invoker
-TODO: Give the Cloud Run service account Vertex AI User and Cloud RUn Invoker
+1.  **Authenticate with Google Cloud:**
+    Log in to your Google Cloud account:
+    ```bash
+    gcloud auth login
+    ```
+
+2.  **Set Application Default Credentials:**
+    This command sets up credentials for applications to use Google Cloud APIs:
+    ```bash
+    gcloud auth application-default login
+    ```
+
+3.  **Set Quota Project:**
+    Configure the project to be used for billing and quota management:
+    ```bash
+    gcloud auth application-default set-quota-project $GOOGLE_CLOUD_PROJECT
+    ```
+    **Note:** `$GOOGLE_CLOUD_PROJECT` will be set after running `./configure.sh` in the next step.
 
 ### 1. Environment Setup
 
-First, we need to configure the environment variables for our project.
+First, copy the example configuration script and make it executable:
+```bash
+cp configure.sh.example configure.sh
+chmod +x configure.sh
+```
+Then, run the configuration script. It will prompt you for your Google Cloud Project ID, Project Number, and a **unique Google Cloud Storage Bucket Name**. This will create a central `.env` file in the project root with all necessary environment variables.
 
-1.  **Configure MCP Servers Environment:**
-    Open the file `mcp_servers/setup_env.sh` and replace the placeholder values for `PROJECT_ID` and `PROJECT_NUMBER` with your Google Cloud project details.
-    
+```bash
+./configure.sh
+```
 
-2.  **Configure A2A Agents Environment:**
-    In the root directory, run the below to copy the example `.env.example` file:
+### 2. Grant IAM Permissions
+The following IAM roles are required for the Agent Engine Service Agent and the Compute Engine Service Account to interact correctly with Vertex AI and Cloud Run.
+
+*   **Agent Engine Service Agent:**
+    *   `roles/aiplatform.user` (Vertex AI User)
+    *   `roles/run.invoker` (Cloud Run Invoker)
+
+*   **Compute Engine Service Account:**
+    *   `roles/aiplatform.user` (Vertex AI User)
+    *   `roles/run.invoker` (Cloud Run Invoker)
+    *   `roles/artifactregistry.writer` (Artifact Registry Writer)
+
+Run the following commands to grant these permissions. The script will use the `GOOGLE_CLOUD_PROJECT` and `PROJECT_NUMBER` variables from the `.env` file you just created.
+
+```bash
+# Grant Vertex AI User and Cloud Run Invoker to the Agent Engine Service Account
+gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
+    --member="serviceAccount:service-$PROJECT_NUMBER@gcp-sa-aiplatform-re.iam.gserviceaccount.com" \
+    --role="roles/aiplatform.user"
+
+gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
+    --member="serviceAccount:service-$PROJECT_NUMBER@gcp-sa-aiplatform-re.iam.gserviceaccount.com" \
+    --role="roles/run.invoker"
+
+# Grant Vertex AI User, Cloud Run Invoker, and Artifact Registry Writer to the Compute Engine Service Account
+gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
+    --member="serviceAccount:$PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+    --role="roles/aiplatform.user"
+
+gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
+    --member="serviceAccount:$PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+    --role="roles/run.invoker"
+
+gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
+    --member="serviceAccount:$PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+    --role="roles/artifactregistry.writer"
+```
+
+
+### 2. Deploy Tooling Servers (Model Context Protocol Servers)
+
+Next, deploy the two MCP (Model Context Protocol) servers. These are the backend tools (Cocktail and Weather APIs) that your agents will call.
+
+1.  **Deploy the Cocktail MCP Server**
+
+    Run the following command from the project root:
     ```bash
-    cp a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env.example a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env
+    ./mcp_servers/deploy_cocktail.sh
     ```
-    Open the newly created `.env` file and fill in your `PROJECT_ID`, `PROJECT_NUMBER`, and `BUCKET_NAME`. You will fill in the server and agent URLs in the next steps.
+    After the deployment is complete, copy the **Service URL** from the output. Open the `.env` file in the **project root** and paste the URL into the `CT_MCP_SERVER_URL` variable.
 
-3.  **Configure Frontend Environment:**
-    Copy the example `.env` file for the frontend:
-    ```bash
-    cp a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env.example a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env
-    ```
-    Open the newly created `.env` file and fill in your `PROJECT_ID` and `PROJECT_NUMBER`. You will fill in the `HOSTING_AGENT_ENGINE_ID` later.
+2.  **Deploy the Weather MCP Server**
 
-3.  **Permissions:**
-    
-     compute engine SA needs roles/artifactregistry.writer
-     
-     gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$PROJECT_NUM-compute@developer.gserviceaccount.com" --role="roles/artifactregistry.writer"
-
-
-### 2. Deploy Tooling Servers (MCP Servers)
-
-We are first deploying our MCP Servers. These are not agents. They are simple Cloud Run services that expose tools (like the Cocktail and Weather APIs) for our agents to use.
-
-These servers provide the tools that our agents will use (e.g., weather and cocktail APIs).
-
-1.  **Deploy the Cocktail MCP Server:**
-
-    ```bash
-    cd mcp_servers
-    ./deploy_cocktail.sh
-    ```
-    After the deployment is complete, copy the service URL from the output.
-
-2.  **Deploy the Weather MCP Server:**
+    Run the following command from the project root:
     ```bash
     ./mcp_servers/deploy_weather.sh
     ```
-    After the deployment is complete, copy the service URL from the output.
+    Again, copy the **Service URL** from the output. Open the `.env` file in the **project root** and paste this URL into the `WEA_MCP_SERVER_URL` variable.
 
-3.  **Update Agents `.env` file:**
-    Open the `.env` file located at `a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env` and paste the URLs you copied into the `CT_MCP_SERVER_URL` and `WEA_MCP_SERVER_URL` fields.
+Your `.env` file in the **project root** should now have the URLs populated, similar to this:
+```env
+# ... (other variables)
+CT_MCP_SERVER_URL="https://cocktail-remote-mcp-server-....a.run.app"
+WEA_MCP_SERVER_URL="https://weather-remote-mcp-server-....a.run.app"
+# ... (other variables)
+```
 
 ### 3. Deploy A2A Agents
 
@@ -112,19 +152,31 @@ Now, we will deploy our three agents to Vertex AI Agent Engine.
     ```
 
 2.  **Deploy All Agents:**
-    Ensure your `.env` file in `a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/` is correctly filled out with your `PROJECT_ID`, `PROJECT_NUMBER`, `GOOGLE_API_KEY`, and `BUCKET_NAME`.
-    Then, run the `deploy_agents.sh` script to deploy all agents:
+    Run the `deploy_agents.sh` script to deploy all agents:
     ```bash
     (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && ./deploy_agents.sh)
     ```
-    This script will deploy the agents and save their URLs and Engine IDs in the `.env` file.
+    This script will deploy the agents and save their URLs and Engine IDs in the root `.env` file.
 
-3.  **Update Frontend `.env` file:**
-    Copy the `HOSTING_AGENT_ENGINE_ID` from `a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/.env` and paste it into the `.env` file in `a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env`.
-    
-    TODO: update deploy cocktail agent / weather agent / hostig agent . py to set vars here so user doesn't need to do manually
-    
-    a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.env
+### 4. Run the Frontend
+
+This Gradio app is our A2A Client. It only knows about the HostingAgent. We will ask it for a cocktail, and it will orchestrate the other agents to get the answer.
+
+We will run the Gradio frontend locally to interact with our agent system.
+
+1.  **Run the local deployment script:**
+    ```bash
+    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1 && ./deploy_frontend.sh --mode local)
+    ```
+
+#### Deploying to Cloud Run (Optional)
+You can also deploy the frontend to Cloud Run.
+
+1.  **Run the Cloud Run deployment script:**
+    ```bash
+    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1 && ./deploy_frontend.sh --mode cloudrun)
+    ```
+    This script will build the container image, deploy the service to Cloud Run, and set up the necessary IAM permissions. Once deployed, you can access the frontend at the URL provided in the output.
 
 ### 4. Run the Frontend
 

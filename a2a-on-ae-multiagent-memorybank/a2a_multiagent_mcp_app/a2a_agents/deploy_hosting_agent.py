@@ -40,8 +40,13 @@ def get_bearer_token() -> str | None:
         )
     return None
 
-# Load environment variables from .env file
-load_dotenv()
+# Determine the project root and construct the path to the .env file
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..', '..'))
+DOTENV_PATH = os.path.join(PROJECT_ROOT, '.env')
+
+# Load environment variables from the root .env file
+load_dotenv(dotenv_path=DOTENV_PATH)
 
 # --- Configuration from Environment Variables ---
 # These variables are crucial for identifying your Google Cloud project and resources.
@@ -105,7 +110,7 @@ if not hosting_agent_engine_id:
 
     # Save the newly created ID to the .env file for future use.
     # This ensures consistency across deployments and allows other agents to reference it.
-    set_key(".env", "HOSTING_AGENT_ENGINE_ID", hosting_agent_engine_id)
+    set_key(DOTENV_PATH, "HOSTING_AGENT_ENGINE_ID", hosting_agent_engine_id)
 else:
     logger.info(f"Using existing HOSTING_AGENT_ENGINE_ID: {hosting_agent_engine_id}")
 
@@ -187,5 +192,5 @@ logger.info(f"Hosting Agent deployed successfully. URL: {hosting_agent_url}")
 logger.info(f"Agent Engine ID: {hosting_agent_engine_id}")
 
 # Save the deployed agent's URL to the .env file.
-set_key(".env", "HOSTING_AGENT_URL", hosting_agent_url)
+set_key(DOTENV_PATH, "HOSTING_AGENT_URL", hosting_agent_url)
 logger.info("HOSTING_AGENT_URL saved to .env file.")
