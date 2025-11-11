@@ -61,13 +61,7 @@ Before proceeding, ensure your `gcloud` CLI is authenticated and configured for 
 
 ### 1. Environment Setup
 
-First, copy the example configuration script and make it executable:
-```bash
-cp configure.sh.example configure.sh
-chmod +x configure.sh
-```
-Then, run the configuration script. It will prompt you for your Google Cloud Project ID, Project Number, and a **unique Google Cloud Storage Bucket Name**. This will create a central `.env` file in the project root with all necessary environment variables.
-
+Run the configuration script. It will prompt you for your Google Cloud Project ID, Project Number, and a **unique Google Cloud Storage Bucket Name**. This will create a central `.env` file in the project root with all necessary environment variables.
 ```bash
 ./configure.sh
 ```
