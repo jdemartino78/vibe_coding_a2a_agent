@@ -15,19 +15,20 @@ set -a
 source "$PROJECT_ROOT/.env"
 set +a
 
-# Deploy each agent
-echo "Deploying Cocktail Agent..."
-python "$SCRIPT_DIR/deploy_cocktail_agent.py"
+# Deploy Cocktail and Weather agents in parallel
+echo "Deploying Cocktail Agent in the background..."
+python "$SCRIPT_DIR/deploy_cocktail_agent.py" &
+cocktail_pid=$!
 
-# Re-source the environment file to pick up the newly created agent URL
-set -a
-source "$PROJECT_ROOT/.env"
-set +a
+echo "Deploying Weather Agent in the background..."
+python "$SCRIPT_DIR/deploy_weather_agent.py" &
+weather_pid=$!
 
-echo "Deploying Weather Agent..."
-python "$SCRIPT_DIR/deploy_weather_agent.py"
+# Wait for both background jobs to complete
+wait $cocktail_pid
+wait $weather_pid
 
-# Re-source the environment file again
+# Re-source the environment file to pick up the newly created agent URLs
 set -a
 source "$PROJECT_ROOT/.env"
 set +a
@@ -37,6 +38,8 @@ python "$SCRIPT_DIR/deploy_hosting_agent.py"
 
 echo "All agents deployed."
 
-echo "Granting Agent Engine Service Agent Cloud Run Invoker"
+echo "Granting Agent Engine Service Account Cloud Run Invoker"
 gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT --member="serviceAccount:service-$PROJECT_NUMBER@gcp-sa-aiplatform-re.iam.gserviceaccount.com"  --role="roles/run.invoker"
 
+echo "Granting Agent Engine Service Account AI Platform User"
+gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT --member="serviceAccount:service-$PROJECT_NUMBER@gcp-sa-aiplatform-re.iam.gserviceaccount.com"  --role="roles/aiplatform.user"

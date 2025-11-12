@@ -24,3 +24,25 @@ gcloud run deploy $SERVICE_NAME \
   --min-instances=1 \
   --no-allow-unauthenticated
 
+if [ $? -eq 0 ]; then
+    echo "Deployment successful. Fetching Service URL..."
+    SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \
+      --platform managed \
+      --region $GOOGLE_CLOUD_LOCATION \
+      --project $GOOGLE_CLOUD_PROJECT \
+      --format="text(metadata.annotations.'run.googleapis.com/urls')" | sed 's/.*\["//' | sed 's/".*//')
+
+    if [ -n "$SERVICE_URL" ]; then
+        echo "Service URL: $SERVICE_URL"
+        # Update the .env file with the new URL
+        sed -i "s|^CT_MCP_SERVER_URL=.*|CT_MCP_SERVER_URL=\"$SERVICE_URL\"|" "$PROJECT_ROOT/.env"
+        echo "CT_MCP_SERVER_URL updated in .env file."
+    else
+        echo "Error: Could not fetch Service URL after deployment."
+        exit 1
+    fi
+else
+    echo "Error: Cloud Run deployment failed."
+    exit 1
+fi
+

@@ -50,9 +50,9 @@ load_dotenv(dotenv_path=DOTENV_PATH)
 
 # --- Configuration from Environment Variables ---
 # These variables are crucial for identifying your Google Cloud project and resources.
-PROJECT_ID = os.getenv("PROJECT_ID")
+PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
 PROJECT_NUMBER = os.getenv("PROJECT_NUMBER")
-LOCATION = os.getenv("LOCATION", "us-central1") # Default to 'us-central1' if not set
+LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1") # Default to 'us-central1' if not set
 BUCKET_NAME = os.getenv("BUCKET_NAME")
 BUCKET_URI = f"gs://{BUCKET_NAME}"
 

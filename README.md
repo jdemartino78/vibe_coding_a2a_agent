@@ -32,7 +32,9 @@ By the end of this session, you will be able to:
     - Vertex AI
     - Cloud Build
     - Artifact Registry
-    - Telemetry API 
+    - Cloud Logging
+    - Cloud Monitoring
+    - Cloud Trace 
 
 ## Step-by-Step Instructions
 
@@ -64,6 +66,11 @@ Before proceeding, ensure your `gcloud` CLI is authenticated and configured for 
 Run the configuration script. It will prompt you for your Google Cloud Project ID, Project Number, and a **unique Google Cloud Storage Bucket Name**. This will create a central `.env` file in the project root with all necessary environment variables.
 ```bash
 ./configure.sh
+```
+
+Load the environment variables from the `.env` file:
+```bash
+source .env
 ```
 
 ### 2. Grant IAM Permissions
@@ -115,7 +122,7 @@ Next, deploy the two MCP (Model Context Protocol) servers. These are the backend
     ```bash
     ./mcp_servers/deploy_cocktail.sh
     ```
-    After the deployment is complete, copy the **Service URL** from the output. Open the `.env` file in the **project root** and paste the URL into the `CT_MCP_SERVER_URL` variable.
+    The script will automatically update the `CT_MCP_SERVER_URL` in your `.env` file.
 
 2.  **Deploy the Weather MCP Server**
 
@@ -123,12 +130,12 @@ Next, deploy the two MCP (Model Context Protocol) servers. These are the backend
     ```bash
     ./mcp_servers/deploy_weather.sh
     ```
-    Again, copy the **Service URL** from the output. Open the `.env` file in the **project root** and paste this URL into the `WEA_MCP_SERVER_URL` variable.
+    The script will automatically update the `WEA_MCP_SERVER_URL` in your `.env` file.
 
 Your `.env` file in the **project root** should now have the URLs populated, similar to this:
 ```env
 # ... (other variables)
-CT_MCP_SERVER_URL="https://cocktail-remote-mcp-server-....a.run.app"
+CT_MCP_SERVER_URL="https://cocktail-mcp-server-....a.run.app"
 WEA_MCP_SERVER_URL="https://weather-remote-mcp-server-....a.run.app"
 # ... (other variables)
 ```
@@ -152,25 +159,6 @@ Now, we will deploy our three agents to Vertex AI Agent Engine.
     ```
     This script will deploy the agents and save their URLs and Engine IDs in the root `.env` file.
 
-### 4. Run the Frontend
-
-This Gradio app is our A2A Client. It only knows about the HostingAgent. We will ask it for a cocktail, and it will orchestrate the other agents to get the answer.
-
-We will run the Gradio frontend locally to interact with our agent system.
-
-1.  **Run the local deployment script:**
-    ```bash
-    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1 && ./deploy_frontend.sh --mode local)
-    ```
-
-#### Deploying to Cloud Run (Optional)
-You can also deploy the frontend to Cloud Run.
-
-1.  **Run the Cloud Run deployment script:**
-    ```bash
-    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1 && ./deploy_frontend.sh --mode cloudrun)
-    ```
-    This script will build the container image, deploy the service to Cloud Run, and set up the necessary IAM permissions. Once deployed, you can access the frontend at the URL provided in the output.
 
 ### 4. Run the Frontend
 
