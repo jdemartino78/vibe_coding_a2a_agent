@@ -115,7 +115,7 @@ Next, deploy the two MCP (Model Context Protocol) servers. These are the backend
     ```bash
     ./mcp_servers/deploy_cocktail.sh
     ```
-    After the deployment is complete, copy the **Service URL** from the output. Open the `.env` file in the **project root** and paste the URL into the `CT_MCP_SERVER_URL` variable.
+    After the deployment is complete, copy the **Service URL** from the output. Open the `.env` file in the **project root** and paste the URL into the `CT_MCP_SERVER_URL` variable. **Crucially, append `/mcp` to the end of the URL.**
 
 2.  **Deploy the Weather MCP Server**
 
@@ -123,13 +123,13 @@ Next, deploy the two MCP (Model Context Protocol) servers. These are the backend
     ```bash
     ./mcp_servers/deploy_weather.sh
     ```
-    Again, copy the **Service URL** from the output. Open the `.env` file in the **project root** and paste this URL into the `WEA_MCP_SERVER_URL` variable.
+    Again, copy the **Service URL** from the output. Open the `.env` file in the **project root** and paste this URL into the `WEA_MCP_SERVER_URL` variable. **Crucially, append `/mcp` to the end of the URL.**
 
 Your `.env` file in the **project root** should now have the URLs populated, similar to this:
 ```env
 # ... (other variables)
-CT_MCP_SERVER_URL="https://cocktail-remote-mcp-server-....a.run.app"
-WEA_MCP_SERVER_URL="https://weather-remote-mcp-server-....a.run.app"
+CT_MCP_SERVER_URL="https://cocktail-remote-mcp-server-....a.run.app/mcp"
+WEA_MCP_SERVER_URL="https://weather-remote-mcp-server-....a.run.app/mcp"
 # ... (other variables)
 ```
 
@@ -140,7 +140,7 @@ Now we deploy the agents. The HostingAgent is our Orchestrator. It will find the
 Now, we will deploy our three agents to Vertex AI Agent Engine.
 
 1.  **Create and Activate Virtual Environment & Install Agent Dependencies:**
-    Navigate to the agents directory and create a virtual environment, then install dependencies:
+    Navigate to the agents directory and create a virtual environment, then install dependencies. **Ensure `google-cloud-aiplatform` is at least version `1.127.0` to avoid `TypeError: _default_instrumentor_builder() got an unexpected keyword argument 'enable_tracing'`.**
     ```bash
     (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && uv venv && source .venv/bin/activate && uv sync --python 3.12)
     ```
@@ -262,7 +262,4 @@ To avoid incurring future charges, you can delete the resources created during t
 ```bash
 ./cleanup.sh
 ```
-This script will:
-- Delete the Cloud Run services for the MCP servers and the frontend.
-- Delete the Vertex AI Agent Engine agents.
-- Delete the GCS bucket used for staging.
+**Note:** If you encounter errors deleting Agent Engines due to child resources, you may need to modify `cleanup.sh` to include `?force=true` in the `curl -X DELETE` command for reasoning engines.
