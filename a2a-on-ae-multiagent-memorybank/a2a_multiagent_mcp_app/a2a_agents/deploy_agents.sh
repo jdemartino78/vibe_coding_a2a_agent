@@ -38,5 +38,5 @@ python "$SCRIPT_DIR/deploy_hosting_agent.py"
 echo "All agents deployed."
 
 echo "Granting Agent Engine Service Agent Cloud Run Invoker"
-gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT --member="serviceAccount:service-$PROJECT_NUMBER@gcp-sa-aiplatform-re.iam.gserviceaccount.com"  --role="roles/run.invoker"
+gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="serviceAccount:service-$PROJECT_NUMBER@gcp-sa-aiplatform-re.iam.gserviceaccount.com"  --role="roles/run.invoker"
 
