@@ -109,27 +109,17 @@ gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
 
 Next, deploy the two MCP (Model Context Protocol) servers. These are the backend tools (Cocktail and Weather APIs) that your agents will call.
 
-1.  **Deploy the Cocktail MCP Server**
-
-    Run the following command from the project root:
-    ```bash
-    ./mcp_servers/deploy_cocktail.sh
-    ```
-    After the deployment is complete, copy the **Service URL** from the output. Open the `.env` file in the **project root** and paste the URL into the `CT_MCP_SERVER_URL` variable. **Crucially, append `/mcp` to the end of the URL.**
-
-2.  **Deploy the Weather MCP Server**
-
-    Run the following command from the project root:
-    ```bash
-    ./mcp_servers/deploy_weather.sh
-    ```
-    Again, copy the **Service URL** from the output. Open the `.env` file in the **project root** and paste this URL into the `WEA_MCP_SERVER_URL` variable. **Crucially, append `/mcp` to the end of the URL.**
+Run the following command from the project root:
+```bash
+./mcp_servers/deploy_mcp_servers.sh
+```
+This script will deploy both the Cocktail and Weather MCP servers in parallel to Cloud Run. It will then automatically construct their service URLs (in the format `https://<service-name>-<project-number>.<region>.run.app/mcp/`) and update the `CT_MCP_SERVER_URL` and `WEA_MCP_SERVER_URL` variables in your `.env` file.
 
 Your `.env` file in the **project root** should now have the URLs populated, similar to this:
 ```env
 # ... (other variables)
-CT_MCP_SERVER_URL="https://cocktail-mcp-server-....a.run.app/mcp/"
-WEA_MCP_SERVER_URL="https://weather-remote-mcp-server-....a.run.app/mcp/"
+CT_MCP_SERVER_URL="https://cocktail-mcp-server-....<project-number>.<region>.run.app/mcp/"
+WEA_MCP_SERVER_URL="https://weather-remote-mcp-server-....<project-number>.<region>.run.app/mcp/"
 # ... (other variables)
 ```
 
