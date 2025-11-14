@@ -193,6 +193,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
             # Get or create a session for this conversation
             session = await self._get_or_create_session(context.context_id, user_id=user_id)
             logging.info(f"Using session: {session.id} for user: {user_id}")
+            logging.debug(f"Session events for session {session.id}: {session.events}")
 
             # Prepare the user message in ADK format
             content = types.Content(role=Role.user, parts=[types.Part(text=query)])
@@ -209,7 +210,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
                 # We're interested in the final response
                 if event.is_final_response() and not answer_sent:
                     # Extract the answer text from the response
-                    answer = self._extract_answer(event)
+                    answer = self._extract_answer(event, query)
                     logging.info(f" {answer}")
 
                     # Add the answer as an artifact
@@ -261,13 +262,19 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
         self.CONTEXT_ID_TO_SESSION_MAP[context_id] = session
         return session
 
-    def _extract_answer(self, event) -> str:
-        """Extract text answer from agent response."""
+    def _extract_answer(self, event, query: str) -> str:
+        """Extract text answer from agent response and remove the original query if present."""
         parts = event.content.parts
         text_parts = [part.text for part in parts if part.text]
 
         # Join all text parts with space
-        return " ".join(text_parts) if text_parts else "No answer found."
+        answer = " ".join(text_parts) if text_parts else "No answer found."
+
+        # Remove the original query if it's echoed in the answer
+        if answer.startswith(query):
+            answer = answer[len(query):].strip()
+
+        return answer
 
     async def cancel(
         self, context: RequestContext, event_queue: EventQueue

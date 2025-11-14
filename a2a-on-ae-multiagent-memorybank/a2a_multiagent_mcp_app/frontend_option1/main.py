@@ -195,7 +195,8 @@ async def main() -> None:
         async def start_chat_session(user_id):
             """Handles the 'Start Chat' button click. Creates and stores clients."""
             if not user_id:
-                return {}
+                # Return 6 empty/default values to match the outputs if user_id is empty
+                return None, None, None, None, gr.update(visible=True), gr.update(visible=False)
             
             start_time = time.time()
             logger.info(f"Starting chat session for user: {user_id}")
@@ -218,18 +219,19 @@ async def main() -> None:
                 end_time = time.time()
                 logger.info(f"Session startup time for user {user_id}: {end_time - start_time:.2f} seconds")
 
-                return {
-                    user_id_state: user_id,
-                    context_id_state: context_id,
-                    a2a_client_state: a2a_client,
-                    httpx_client_state: httpx_client,
-                    login_view: gr.update(visible=False),
-                    chat_view: gr.update(visible=True),
-                }
+                return (
+                    user_id,
+                    context_id,
+                    a2a_client,
+                    httpx_client,
+                    gr.update(visible=False),
+                    gr.update(visible=True),
+                )
             except Exception as e:
                 logger.error(f"Failed to create A2A client: {e}", exc_info=True)
                 gr.Warning(f"Failed to start session: {e}")
-                return {}
+                # Return 6 empty/default values on error
+                return None, None, None, None, gr.update(visible=True), gr.update(visible=False)
 
         async def add_message_and_get_response(message, chat_history, user_id, context_id, a2a_client):
             """Handles sending a message and streaming the response."""
