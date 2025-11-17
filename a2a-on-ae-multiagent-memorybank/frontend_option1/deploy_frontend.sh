@@ -73,15 +73,15 @@ case "$DEPLOY_MODE" in
             exit 1
         fi
 
-        if [ -z "$HOSTING_AGENT_ENGINE_ID" ]; then
-            echo "Error: HOSTING_AGENT_ENGINE_ID is not set in the .env file."
+        if [ -z "$ORCHESTRATOR_AGENT_ENGINE_ID" ]; then
+            echo "Error: ORCHESTRATOR_AGENT_ENGINE_ID is not set in the .env file."
             exit 1
         fi
 
         echo "Project ID: $GOOGLE_CLOUD_PROJECT"
         echo "Project Number: $PROJECT_NUMBER"
         echo "Location: $GOOGLE_CLOUD_LOCATION"
-        echo "Agent Engine ID: $HOSTING_AGENT_ENGINE_ID"
+        echo "Agent Engine ID: $ORCHESTRATOR_AGENT_ENGINE_ID"
         echo "Cloud Run Service Name: $FRONTEND_SERVICE_NAME"
 
         echo "Deploying frontend service to Cloud Run..."
@@ -91,7 +91,7 @@ case "$DEPLOY_MODE" in
           --project "$GOOGLE_CLOUD_PROJECT" \
           --memory 2G \
           --no-allow-unauthenticated \
-          --update-env-vars=PROJECT_ID="$GOOGLE_CLOUD_PROJECT",HOSTING_AGENT_ENGINE_ID="$HOSTING_AGENT_ENGINE_ID",PROJECT_NUMBER="$PROJECT_NUMBER"
+          --update-env-vars=PROJECT_ID="$GOOGLE_CLOUD_PROJECT",ORCHESTRATOR_AGENT_ENGINE_ID="$ORCHESTRATOR_AGENT_ENGINE_ID",PROJECT_NUMBER="$PROJECT_NUMBER"
 
         if [ $? -eq 0 ]; then
             echo "Frontend service deployed successfully to Cloud Run."
@@ -115,9 +115,10 @@ case "$DEPLOY_MODE" in
         fi
 
         echo "Frontend deployment and authorization complete."
-        echo "You can now access your Cloud Run service. Check the Cloud Run console for the URL."
-        echo "For temporary testing, you can also authorize all users with the following command:"
-        echo "gcloud run services add-iam-policy-binding \"$SERVICE_NAME\" --member=\"allUsers\" --role=\"roles/run.invoker\" --region=\"$LOCATION\" --project=\"$PROJECT_ID\""
+        echo "To access your Cloud Run service securely, you can set up a proxy:"
+        echo "gcloud run services proxy $FRONTEND_SERVICE_NAME --region $GOOGLE_CLOUD_LOCATION --port 8081"
+        echo "This will make the service available at http://localhost:8081."
+        echo "You can also check the Cloud Run console for the public URL if you prefer direct access (ensure proper IAM roles are set for users)."
         ;;
     "help")
         echo "Usage: ./deploy_frontend.sh [--mode <local|cloudrun|help>]"

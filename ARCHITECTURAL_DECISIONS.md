@@ -1,6 +1,6 @@
 # Backend Architecture Guide
 
-This document explains the backend architecture of the A2A multi-agent system. It covers the codebase structure, core design patterns, state management, and the agent-to-agent communication protocol.
+This document explains the backend architecture of the A2A multi-agent system. It is designed as a teaching guide to connect high-level concepts to the specific code that implements them.
 
 ## Guiding Principle: Separating Logic from Infrastructure
 
@@ -15,11 +15,22 @@ This separation makes the system more flexible, easier to test, and simpler to m
 
 ## 1. Codebase Structure
 
-The code within `a2a-on-ae-multiagent-memorybank/a2a_agents/` is organized by function to enforce the separation of concerns.
+The code within `a2a-on-ae-multiagent-memorybank/a2a_agents/` is organized by function. Here are the key files and their roles:
 
--   `orchestrator/`: Contains the central **Orchestrator Agent**. This is the user-facing component that manages the overall task.
--   `specialized_agents/`: Contains the simple, stateless "worker" agents (`cocktail_agent`, `weather_agent`). These agents act as tools that the orchestrator can call to perform specific tasks.
--   `shared/`: Contains code used by all agents. This is where the infrastructure, state management, communication clients, and core patterns are implemented.
+-   `orchestrator/`: Contains the central **Orchestrator Agent**.
+    -   `orchestrator_executor.py`: The main entry point ("Shell") for the orchestrator. It handles database setup and manages the A2A task lifecycle.
+
+-   `specialized_agents/`: Contains the simple, stateless "worker" agents.
+    -   `cocktail_agent/cocktail_agent_executor.py`: The implementation for the Cocktail Agent.
+    -   `weather_agent/weather_agent_executor.py`: The implementation for the Weather Agent.
+
+-   `shared/`: Contains the core logic and infrastructure used by all agents.
+    -   `adk_orchestrator_agent.py`: The "Brain" of the orchestrator. This file defines the core LLM prompt (`ORCHESTRATOR_INSTRUCTION`) and the ADK agent that uses it.
+    -   `a2a_tools.py`: Defines the crucial `delegate_to_specialist_agent` function, which is the tool the orchestrator LLM uses to communicate with other agents.
+    -   `remote_connection.py`: A low-level A2A client used by the delegation tool to handle HTTP requests.
+    -   `auth_utils.py`: Handles secure service-to-service authentication on Google Cloud.
+    -   `session_store.py`: Manages the mapping between A2A `context_id` and ADK `session_id` in the database, ensuring conversational memory.
+    -   `dependencies.py`: Manages the creation of the shared AlloyDB database connection.
 
 ---
 
@@ -27,62 +38,160 @@ The code within `a2a-on-ae-multiagent-memorybank/a2a_agents/` is organized by fu
 
 ### Composition over Inheritance
 
-The system strongly prefers Composition (a class *has a* dependency) over Inheritance (a class *is a* dependency).
-
--   **Implementation:** The `OrchestratorAgentExecutor` (the Shell) holds an instance of `AdkOrchestratorAgentExecutor` (the Brain). The Shell's responsibility is infrastructure: it manages the asynchronous setup of the database and the A2A task lifecycle. The Brain is responsible only for the agent's reasoning during a single turn and has no knowledge of the database.
--   **Benefit:** This pattern allows the Brain's complex reasoning to be unit-tested in isolation, without needing to create or mock a database connection. It also allows the entire infrastructure Shell to be replaced or modified without impacting the core agent logic.
-
-### Inheritance
-
-Inheritance is used pragmatically and only when required to conform to the A2A framework's interface. `OrchestratorAgentExecutor` *is an* `a2a.server.agent_execution.AgentExecutor` because the framework requires this specific class structure to correctly serve the agent.
+The `OrchestratorAgentExecutor` (the Shell) holds an instance of `AdkOrchestratorAgentExecutor` (the Brain). This allows the Brain's complex reasoning to be unit-tested in isolation, without needing to mock a database connection.
 
 ### Dependency Injection and Lazy Initialization
 
-The system creates dependencies once at startup and injects them where needed.
-
--   **Implementation:** The `shared/dependencies.py` module is responsible for creating a single, shared connection pool (`AsyncEngine`) to the AlloyDB database. This connection is initialized "lazily" on the first incoming request via the `OrchestratorAgentExecutor._ensure_setup` method. This method then passes, or "injects," the database engine into the other components that require it, such as the session store.
--   **Benefit:** This solves a critical challenge: database connections are `async`, but class constructors (`__init__`) are `sync`. By delaying initialization until the first `async` request, we handle the async lifecycle correctly and ensure a single, efficient connection pool is shared across the application.
+The `shared/dependencies.py` module creates a single, shared connection pool to the AlloyDB database. This connection is initialized "lazily" on the first incoming request via the `OrchestratorAgentExecutor._ensure_setup` method, solving the challenge of `async` database connections in `sync` class constructors.
 
 ---
 
-## 3. Agent Communication & Security
+## 3. Architectural Shift: From Executor-Driven to Tool-Driven Orchestration
 
-The `shared/` directory contains a set of modules that work together to enable secure communication between the orchestrator and the specialized agents.
+A primary decision in this project's evolution was the shift from an **Executor-Driven** architecture to a more flexible **Tool-Driven** model. This change fundamentally alters where the orchestration logic resides, moving it from complex Python code into the reasoning capabilities of the orchestrator's LLM.
 
-### `a2a_tools.py`: The High-Level Interface
+### The Old Model: Executor-Driven Orchestration
+-   **Orchestration Logic:** Lived in Python classes.
+-   **Flexibility:** Low. Adding a new agent required modifying the orchestrator's Python code.
+-   **Complexity:** High Python complexity (managing protocols, state, and workflow).
 
--   **Purpose:** This module defines the `delegate_to_specialist_agent` function. This function is exposed as a "tool" to the orchestrator's LLM.
--   **Mechanism:** When the orchestrator's LLM decides to delegate a task, it generates a tool call with the target agent's name and a query. This function receives that call and acts as the entry point for agent-to-agent communication. It uses the `RemoteAgentConnection` to handle the actual network request.
+### The New Model: Tool-Driven Orchestration
+-   **Orchestration Logic:** Lives **entirely within the LLM's prompt**. The prompt instructs a powerful model (e.g., Gemini Pro) on how to form a multi-step plan and execute it by calling a simple tool.
+-   **Flexibility:** **High.** Adding a new agent only requires updating a dictionary in `a2a_tools.py` and the orchestrator's prompt.
+-   **Complexity:** **Low Python complexity.** The complexity is shifted to the LLM's reasoning.
 
-### `remote_connection.py`: The A2A Client
-
--   **Purpose:** This module provides the `RemoteAgentConnection` class, a low-level client for making A2A protocol calls.
--   **Mechanism:** This class abstracts the details of the A2A protocol. It knows how to fetch an agent's "card" (a manifest of its capabilities), construct a valid A2A message, send the request over HTTP, and poll for the final result of the task. It uses `auth_utils.py` to get the necessary authentication tokens for its requests.
-
-### `auth_utils.py`: Secure Authentication
-
--   **Purpose:** This module handles the authentication required for one Google Cloud service (the orchestrator's Cloud Run instance) to securely call another (the specialized agent's Cloud Run instance).
--   **Mechanism:** It contains the `get_auth_token` function, which programmatically requests a Google-signed OIDC identity token for the specialized agent's URL. This token is then attached as a `Bearer` token in the `Authorization` header of the HTTP request made by the `RemoteAgentConnection`. This is a standard and secure way to handle service-to-service authentication on Google Cloud.
-
-### `custom_context_builder.py`: Passing User Identity
-
--   **Purpose:** The A2A protocol does not have a built-in field for the end-user's identity. This module provides a mechanism to pass the `user_id` from the orchestrator to the specialized agents.
--   **Mechanism:** It uses Python's `contextvars` to create a request-scoped context. The `AdkOrchestratorAgentExecutor` sets the `user_id` in this context at the beginning of a request. The `delegate_to_specialist_agent` tool then reads the `user_id` from this context and includes it in the A2A message's metadata field, ensuring the specialized agents know which user the request belongs to.
+This shift fully embraces the "Brain vs. Shell" principle. The Python code provides the "hands" (the tool), while the LLM serves as the "brain."
 
 ---
 
-## 4. Three Layers of Persistent State
+## 4. Anatomy of a Multi-Agent Request (Tool-Driven Flow)
 
-The agent's state is managed in three distinct layers, all persisting to a single AlloyDB database to ensure data integrity and resilience to server restarts.
+This section traces a user query like *"What's the weather in Boston and what's a good drink for that?"* through the system, highlighting the key files and functions involved.
 
-### Layer 1: A2A Task Lifecycle (`DatabaseTaskStore`)
+**Step 1: Request Entry**
+-   The user query enters the system via the Gradio frontend.
+-   **File:** `orchestrator/orchestrator_executor.py`
+-   **Function:** The `OrchestratorAgentExecutor.execute()` method is called. It ensures the database is connected and retrieves the conversational session.
 
-This layer tracks the status of a single user request according to the A2A protocol. The `DatabaseTaskStore` from the `a2a-sdk` automatically creates and manages a `tasks` table in AlloyDB. The orchestrator updates the task's status (`running`, `completed`, `failed`) throughout its execution. This allows a user to query the status of any job, especially long-running ones.
+**Step 2: Orchestrator Planning**
+-   The query is passed to the orchestrator's LLM.
+-   **File:** `shared/adk_orchestrator_agent.py`
+-   **Logic:** The LLM uses the `ORCHESTRATOR_INSTRUCTION` prompt to form a plan. It reasons: "I need weather first, then a drink suggestion. I must call the Weather Agent, wait for the result, and then call the Cocktail Agent."
 
-### Layer 2: Conversational Context (`SessionStore`)
+**Step 3: First Tool Call (Weather)**
+-   The LLM generates a tool call to the `delegate_to_specialist_agent` function.
+-   **File:** `shared/a2a_tools.py`
+-   **Function:** `delegate_to_specialist_agent(agent_name='Weather Agent', query='What is the weather in Boston?')` is executed.
 
-This layer preserves the history of a conversation across multiple turns, preventing agent amnesia. The A2A protocol uses a `context_id` to track a conversation, while the underlying Google ADK framework uses a `session_id`. Our custom `session_store.py` module creates a `session_mappings` table to link these two IDs. When a request arrives, the agent looks up the `context_id` to find the corresponding ADK `session_id`, which allows it to retrieve the full conversation history.
+**Step 4: Secure A2A Delegation**
+-   The `delegate_to_specialist_agent` function looks up the Weather Agent's URL.
+-   **File:** `shared/auth_utils.py`
+-   **Function:** It calls `get_auth_token()` to get a secure OIDC token for the request.
+-   **File:** `shared/remote_connection.py`
+-   **Function:** The `RemoteAgentConnection.send_message()` method uses the token to send a secure A2A request over HTTP to the Weather Agent.
 
-### Layer 3: Long-Term Knowledge (`MemoryBank`)
+**Step 5: Specialist Agent Execution**
+-   The Weather Agent receives the request.
+-   **File:** `specialized_agents/weather_agent/weather_agent_executor.py`
+-   **Logic:** It executes its own LLM and tools (the MCP server) to get the weather, and returns a structured JSON response.
 
-This layer allows the agent to learn and recall facts across many conversations. We use the Google ADK's `MemoryBank` feature, configured with the `PersistentVertexAiMemoryBankService` to ensure memories are stored durably. The `PreloadMemoryTool` automatically retrieves relevant memories and injects them into the agent's context at the start of each turn, providing it with long-term knowledge.
+**Step 6: Second Tool Call (Cocktail)**
+-   The orchestrator's LLM receives the weather data. Following its plan, it generates a second tool call.
+-   **File:** `shared/a2a_tools.py`
+-   **Function:** `delegate_to_specialist_agent(agent_name='Cocktail Agent', query='What is a good cocktail for a cold day?')` is executed. This follows the same secure delegation process as Step 4.
+
+**Step 7: Final Synthesis**
+-   The orchestrator's LLM now has the results from both specialist agents.
+-   **File:** `shared/adk_orchestrator_agent.py`
+-   **Logic:** Following the `ORCHESTRATOR_INSTRUCTION`, it synthesizes the two pieces of information into a single, user-friendly paragraph.
+-   **File:** `orchestrator/orchestrator_executor.py`
+-   **Function:** The final text is sent back to the user via the `event_queue.enqueue_event()`.
+
+---
+
+## 5. Three Layers of Persistent State
+
+The agent's state is managed in three distinct layers, primarily using a single AlloyDB database.
+
+### Layer 1: A2A Task Lifecycle
+-   **Purpose:** Tracks the status of a single user request (`running`, `completed`, etc.).
+-   **Implementation:** The `DatabaseTaskStore` from the `a2a-sdk` automatically manages a `tasks` table in AlloyDB.
+-   **File:** `shared/dependencies.py` (where `get_database_task_store()` is defined).
+
+### Layer 2: Conversational Context
+-   **Purpose:** Preserves conversation history across multiple turns.
+-   **Implementation:** Links the A2A `context_id` to the ADK `session_id`.
+-   **File:** `shared/session_store.py` (implements `get_session_mapping` and `set_session_mapping` which read/write to a `session_mappings` table in AlloyDB).
+
+### Layer 3: Long-Term Knowledge
+-   **Purpose:** Allows the agent to learn and recall facts across many conversations.
+-   **Implementation:** Uses Google ADK's `MemoryBank` feature, configured with `PersistentVertexAiMemoryBankService`.
+-   **File:** `shared/adk_orchestrator_agent.py` (where the service is configured and the `PreloadMemoryTool` is attached to the agent).
+
+---
+
+## 6. Architectural Diagram
+
+```mermaid
+graph TD
+    subgraph User Experience
+        A[Frontend Web App<br/>Gradio] --> B(User Query)
+    end
+
+    subgraph Google Cloud Project
+        subgraph Vertex AI Services
+            subgraph Agent Engine
+                C{Orchestrator Agent<br/>(Shell & Brain)}
+                E[Weather Agent]
+                F[Cocktail Agent]
+            end
+            O[Vertex AI MemoryBank]
+        end
+
+        subgraph Cloud Run
+            G[Weather MCP Server]
+            H[Cocktail MCP Server]
+        end
+
+        subgraph Persistence & Secrets
+            I[AlloyDB Database<br/>(TaskStore & SessionStore)]
+            J[Secret Manager]
+        end
+
+        %% Relationships
+        B -- "HTTP/S Request" --> C;
+
+        %% Orchestrator to Specialized Agent Flow
+        C -- "Delegate Task (A2A)" --> E;
+        C -- "Delegate Task (A2A)" --> F;
+
+        %% Specialized Agent to MCP Flow
+        E -- "HTTP/S Tool Call" --> G;
+        F -- "HTTP/S Tool Call" --> H;
+
+        %% State Management Flow
+        C -- "Stores/Retrieves Task & Session State" --> I;
+        J -- "Provides DB Credentials" --> C;
+
+        %% Memory Flow
+        C -- "R/W Long-Term Memory" --> O;
+        E -- "R/W Long-Term Memory" --> O;
+        F -- "R/W Long-Term Memory" --> O;
+    end
+
+    %% Styling
+    style C fill:#f9f,stroke:#333,stroke-width:2px;
+    style E fill:#cec,stroke:#333,stroke-width:2px;
+    style F fill:#cec,stroke:#333,stroke-width:2px;
+    style G fill:#dee,stroke:#333,stroke-width:2px;
+    style H fill:#dee,stroke:#333,stroke-width:2px;
+    style I fill:#fcc,stroke:#333,stroke-width:2px;
+    style J fill:#fcf,stroke:#333,stroke-width:2px;
+    style O fill:#ffc,stroke:#333,stroke-width:2px;
+```
+
+---
+
+## Appendix: Anatomy of the `deploy_alloydb.sh` Script
+
+The `deploy_alloydb.sh` script is a fully idempotent script responsible for provisioning the entire database backend. It handles API enablement, VPC peering, cluster/instance creation, IP authorization, and secure credential management in Secret Manager.

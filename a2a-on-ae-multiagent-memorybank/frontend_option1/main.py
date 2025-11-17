@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# Author: Dave Wang
-# a2a_multiagent_mcp_app/frontend_option1/main.py
 import asyncio
 import logging
 import os
@@ -130,38 +128,33 @@ async def get_agent_card(resource_name: str) -> object:
 
 async def get_response_from_agent(
     query: str,
-    history: List[Tuple[str, str]],
     session_state: Dict[str, Any]
-) -> AsyncIterator[Tuple[List[Tuple[str, str]], Dict[str, Any]]]:
+) -> AsyncIterator[Tuple[str, Dict[str, Any]]]:
     """Get response from host agent."""
 
-    a2a_client: Client = None  # Define client for the finally block
-    httpx_client: httpx.AsyncClient = None  # Define httpx_client for the finally block
+    a2a_client: Client = None
+    httpx_client: httpx.AsyncClient = None
 
     try:
-        # --- 1. Get Agent Card ---
         logger.info("Fetching agent card...")
         remote_a2a_agent_card = await get_agent_card(remote_a2a_agent_resource_name)
         logger.info("Agent card fetched successfully")
 
-        # --- 2. Create HTTP Client with Auth ---
         httpx_client = httpx.AsyncClient(
             timeout=120,
             auth=GoogleAuth(),
         )
 
-        # --- 3. Create A2A Client ---
         factory = ClientFactory(
             ClientConfig(
                 supported_transports=[TransportProtocol.http_json],
                 use_client_preference=True,
-                httpx_client=httpx_client,  # Pass the authenticated client
+                httpx_client=httpx_client,
             )
         )
         a2a_client = factory.create(remote_a2a_agent_card)
         logger.info("A2A client created successfully")
 
-        # --- 4. Create Message ---
         message_payload = {
             "message_id": f"message-{os.urandom(8).hex()}",
             "role": Role.user,
@@ -175,22 +168,18 @@ async def get_response_from_agent(
 
         message = Message(**message_payload)
 
-
-        # --- 5. Send Message and Stream Response ---
         logger.info(f"Sending message to agent: {query}")
         response_stream = a2a_client.send_message(message)
 
         final_result_text = None
         final_task_object = None
 
-        # Iterate over the async generator which yields task status updates
         async for response_chunk in response_stream:
-            task_object = response_chunk[0]  # Task object is the first element
+            task_object = response_chunk[0]
             final_task_object = task_object
 
             logger.debug(f"Received task update. Status: {task_object.status.state}")
 
-            # Wait for the task to complete
             if task_object.status.state in (TaskState.completed, TaskState.failed):
                 logger.info(f"Task reached terminal state: {task_object.status.state}")
                 if hasattr(task_object, "artifacts") and task_object.artifacts:
@@ -208,37 +197,27 @@ async def get_response_from_agent(
                     final_result_text = task_object.status.message.parts[0].root.text
                     break
 
-        # --- 6. Update Session State based on Final Task Status ---
         if final_task_object:
-            # Always persist the context_id to maintain conversation history
             session_state["context_id"] = final_task_object.context_id
-
-            # If the task is in a terminal state, clear the task_id for the next turn
             if final_task_object.status.state in (TaskState.completed, TaskState.failed):
                 session_state["task_id"] = None
             else:
-                # Otherwise, persist the task_id to continue the current task
                 session_state["task_id"] = final_task_object.id
 
-        # --- 7. Yield Final Response ---
         if final_result_text:
-            history.append((query, final_result_text))
-            yield history, session_state
+            yield final_result_text, session_state
         else:
             logger.warning("Task finished but no text artifact was found")
             no_response_message = "I processed your request but found no text response."
-            history.append((query, no_response_message))
-            yield history, session_state
+            yield no_response_message, session_state
 
     except Exception as e:
         logger.error(
             f"Error in get_response_from_agent (Type: {type(e).__name__}): {e}", exc_info=True
         )
         error_response = f"An error occurred: {e}"
-        history.append((query, error_response))
-        yield history, session_state
+        yield error_response, session_state
     finally:
-        # --- 8. Clean up clients ---
         if a2a_client:
             await a2a_client.close()
             logger.debug("A2A client closed")
@@ -255,7 +234,8 @@ async def main() -> None:
         
         with gr.Row():
             gr.Image(
-                "static/a2a.png",
+                value="static/a2a.png",
+                interactive=False,
                 width=100,
                 height=100,
                 scale=0,
@@ -282,16 +262,12 @@ async def main() -> None:
             chat_history.append((message, None))
             yield "", chat_history, session
 
-            # 2. Append a placeholder for the bot's response
-            chat_history.append((None, "Thinking..."))
-            yield "", chat_history, session
-
-            # 3. Stream the response from the agent
+            # 2. Stream the response from the agent
             async for bot_response, new_session in get_response_from_agent(
                 message, session
             ):
-                # 4. Update the placeholder with the final response
-                chat_history[-1] = (None, bot_response)
+                # 3. Update the history with the final response
+                chat_history.append((None, bot_response))
                 yield "", chat_history, new_session
 
         msg.submit(
@@ -303,10 +279,12 @@ async def main() -> None:
     async def health_check():
         return {"status": "ok"}
 
-    logger.info("Launching Gradio interface on http://0.f.0.0:8080")
+    # Get port from environment variable or default to 8080
+    port = int(os.environ.get("PORT", 8080))
+    logger.info(f"Launching Gradio interface on http://0.0.0.0:{port}")
     demo.queue().launch(
         server_name="0.0.0.0",
-        server_port=8080,
+        server_port=port,
     )
 
 
