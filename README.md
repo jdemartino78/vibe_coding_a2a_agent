@@ -7,7 +7,7 @@
 > **⚠️ Important**: Please run this lab in **Cloud Shell** to ensure you have the proper permissions.
 
 ## Overview
-In this 1-hour session, we will build and deploy a multi-agent system using the A2A (Agent-to-Agent) protocol. This system will include a 'Hosting' agent that communicates with 'Weather' and 'Cocktail' agents to fulfill user requests.
+In this 1-hour session, we will build and deploy a multi-agent system using the A2A (Agent-to-Agent) protocol. This system will include a 'Orchestrator' agent that communicates with 'Weather' and 'Cocktail' agents to fulfill user requests.
 
 ## Learning Objectives
 By the end of this session, you will be able to:
@@ -90,6 +90,8 @@ gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
     --member="serviceAccount:service-$PROJECT_NUMBER@gcp-sa-aiplatform-re.iam.gserviceaccount.com" \
     --role="roles/run.invoker"
 
+**Note on the Agent Engine Service Agent:** The `gcp-sa-aiplatform-re.iam.gserviceaccount.com` service account is managed by Google and is created automatically only when the first Agent Engine is deployed in your project. If the two commands above fail with a "service account not found" error, it is safe to proceed with the next steps. Simply return to this section and run these two commands again after you have successfully deployed your agents in Step 3.
+
 # Grant Vertex AI User, Cloud Run Invoker, and Artifact Registry Writer to the Compute Engine Service Account
 gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
     --member="serviceAccount:$PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
@@ -130,15 +132,15 @@ Now we deploy the agents. The HostingAgent is our Orchestrator. It will find the
 Now, we will deploy our three agents to Vertex AI Agent Engine.
 
 1.  **Create and Activate Virtual Environment & Install Agent Dependencies:**
-    Navigate to the agents directory and create a virtual environment, then install dependencies. **Ensure `google-cloud-aiplatform` is at least version `1.127.0` to avoid `TypeError: _default_instrumentor_builder() got an unexpected keyword argument 'enable_tracing'`.**
+    Navigate to the agents directory, create a virtual environment, install dependencies, and then install the local package in editable mode. **Ensure `google-cloud-aiplatform` is at least version `1.127.0` to avoid `TypeError: _default_instrumentor_builder() got an unexpected keyword argument 'enable_tracing'`.**
     ```bash
-    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && uv venv && source .venv/bin/activate && uv sync --python 3.12)
+    (cd a2a-on-ae-multiagent-memorybank/a2a_agents && uv venv && source .venv/bin/activate && uv sync --python 3.12 && uv pip install -e .)
     ```
 
 2.  **Deploy All Agents:**
     Run the `deploy_agents.sh` script to deploy all agents:
     ```bash
-    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents && ./deploy_agents.sh)
+    (cd a2a-on-ae-multiagent-memorybank/a2a_agents && ./deploy_agents.sh)
     ```
     This script will deploy the agents and save their URLs and Engine IDs in the root `.env` file.
 
@@ -150,7 +152,7 @@ We will run the Gradio frontend locally to interact with our agent system.
 
 1.  **Run the local deployment script:**
     ```bash
-    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1 && ./deploy_frontend.sh --mode local)
+    (cd a2a-on-ae-multiagent-memorybank/frontend_option1 && ./deploy_frontend.sh --mode local)
     ```
 
 #### Deploying to Cloud Run (Optional)
@@ -158,7 +160,7 @@ You can also deploy the frontend to Cloud Run.
 
 1.  **Run the Cloud Run deployment script:**
     ```bash
-    (cd a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1 && ./deploy_frontend.sh --mode cloudrun)
+    (cd a2a-on-ae-multiagent-memorybank/frontend_option1 && ./deploy_frontend.sh --mode cloudrun)
     ```
     This script will build the container image, deploy the service to Cloud Run, and set up the necessary IAM permissions. Once deployed, you can access the frontend at the URL provided in the output.
 
@@ -171,39 +173,6 @@ Try asking it:
 - `Please list a random cocktail`
 - `What ingredients are in a Margarita?`
 
-TODO: 
-- deploy_frontend script (local vs cloudrun) not reading in correctly - always defaults to local 
-TODO: 
-- debug error An error occurred: 'AgentEngine' object has no attribute 'handle_authenticated_agent_card'
-Traceback (most recent call last):
-  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/main.py", line 142, in get_response_from_agent
-    remote_a2a_agent_card = await get_agent_card(remote_a2a_agent_resource_name)
-                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/main.py", line 127, in get_agent_card
-    return await remote_a2a_agent.handle_authenticated_agent_card()
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.venv/lib/python3.13/site-packages/pydantic/main.py", line 991, in __getattr__
-    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
-AttributeError: 'AgentEngine' object has no attribute 'handle_authenticated_agent_card'
-2025-11-06 19:29:57,992 - __main__ - INFO - Fetching agent card...
-2025-11-06 19:29:58,284 - httpx - INFO - HTTP Request: GET https://us-central1-aiplatform.googleapis.com/v1beta1/projects/997110692467/locations/us-central1/reasoningEngines/ "HTTP/1.1 200 OK"
-2025-11-06 19:29:58,285 - __main__ - ERROR - Error in get_response_from_agent (Type: AttributeError): 'AgentEngine' object has no attribute 'handle_authenticated_agent_card'
-Traceback (most recent call last):
-  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/main.py", line 142, in get_response_from_agent
-    remote_a2a_agent_card = await get_agent_card(remote_a2a_agent_resource_name)
-                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/main.py", line 127, in get_agent_card
-    return await remote_a2a_agent.handle_authenticated_agent_card()
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/lizraymond/vibe_coding_a2a_agent/a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/frontend_option1/.venv/lib/python3.13/site-packages/pydantic/main.py", line 991, in __getattr__
-    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
-AttributeError: 'AgentEngine' object has no attribute 'handle_authenticated_agent_card'
-
-
-
-
-
-
 ## What We Just Built
 Congratulations! You have successfully built a multi-agent system.
 - A **Gradio Frontend** (our client)
@@ -214,12 +183,13 @@ Congratulations! You have successfully built a multi-agent system.
 Here is the architecture you deployed:
 ![architecture](a2a-on-ae-multiagent-memorybank/asset/a2a_ae_diagram.png)
 
-## Key Files
+## Project Structure
+This project is organized into three main components:
+-   `mcp_servers/`: Contains the backend tool servers for the Cocktail and Weather agents. These are deployed as Cloud Run services.
+-   `a2a-on-ae-multiagent-memorybank/a2a_agents/`: Contains the source code for the three agents (Hosting, Cocktail, and Weather) and their deployment scripts.
+-   `a2a-on-ae-multiagent-memorybank/frontend_option1/`: A Gradio-based web interface for interacting with the deployed agents.
 
--   `mcp_servers/`: Contains the simple 'tool' servers (Cocktail, Weather) that our agents will call. These are deployed as Cloud Run services.
--   `a2a-on-ae-multiagent-memorybank/`: Contains the main project components:
-    -   `a2a_agents/`: Holds the source code for the three agents (Hosting, Cocktail, and Weather) and their deployment scripts.
-    -   `frontend_option1/`: A Gradio-based web interface for interacting with the deployed agents.
+
 
 ## Learn More
 - [Agent Development Kit (ADK)](https://github.com/GoogleCloudPlatform/agent-development-kit)

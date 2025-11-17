@@ -56,14 +56,14 @@ for AGENT_ID in "${AGENT_IDS[@]}"; do
         # Check if the Agent Engine exists
         HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET \
             -H "Authorization: Bearer $TOKEN" \
-            "https://aiplatform.googleapis.com/v1/projects/$GOOGLE_CLOUD_PROJECT/locations/$GOOGLE_CLOUD_LOCATION/reasoningEngines/$AGENT_ID")
+            "https://aiplatform.googleapis.com/v1beta1/projects/$GOOGLE_CLOUD_PROJECT/locations/$GOOGLE_CLOUD_LOCATION/reasoningEngines/$AGENT_ID")
 
         if [ "$HTTP_STATUS" -eq 200 ]; then
             echo "Deleting Agent Engine: $AGENT_ID..."
             # Delete the Agent Engine
             curl -s -X DELETE \
                 -H "Authorization: Bearer $TOKEN" \
-                "https://aiplatform.googleapis.com/v1/projects/$GOOGLE_CLOUD_PROJECT/locations/$GOOGLE_CLOUD_LOCATION/reasoningEngines/$AGENT_ID?force=true"
+                "https://aiplatform.googleapis.com/v1beta1/projects/$GOOGLE_CLOUD_PROJECT/locations/$GOOGLE_CLOUD_LOCATION/reasoningEngines/$AGENT_ID?force=true"
             echo "Agent Engine: $AGENT_ID deleted."
         elif [ "$HTTP_STATUS" -eq 404 ]; then
             echo "Agent Engine: $AGENT_ID not found, skipping."
