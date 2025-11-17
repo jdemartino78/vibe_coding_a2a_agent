@@ -18,8 +18,15 @@ else
     exit 1
 fi
 
+# --- Configuration for AlloyDB ---
+CLUSTER_ID="a2a-task-store-cluster"
+INSTANCE_ID="a2a-task-store-instance"
+DB_USER_SECRET_ID="alloydb-user-a2a-agent"
+DB_PASS_SECRET_ID="alloydb-password-a2a-agent"
+DB_INSTANCE_URI_SECRET_ID="alloydb-instance-uri"
+
 # --- Confirmation Prompt ---
-read -p "This script will attempt to delete all Cloud Run services, Vertex AI Agent Engines, and the GCS bucket created by this project. Are you sure you want to continue? (y/n) " -n 1 -r
+read -p "This script will attempt to delete ALL resources created by this project, including Cloud Run services, Agent Engines, the GCS bucket, Secret Manager secrets, and the AlloyDB cluster. This is a destructive action. Are you sure you want to continue? (y/n) " -n 1 -r
 echo
 if [[ ! $REPLY =~ ^[Yy]$ ]]
 then
@@ -50,20 +57,16 @@ echo "
 AGENT_IDS=("$COCKTAIL_AGENT_ENGINE_ID" "$WEATHER_AGENT_ENGINE_ID" "$HOSTING_AGENT_ENGINE_ID")
 for AGENT_ID in "${AGENT_IDS[@]}"; do
     if [ ! -z "$AGENT_ID" ]; then
-        # Get a bearer token for authentication
         TOKEN=$(gcloud auth print-access-token)
-
-        # Check if the Agent Engine exists
         HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET \
             -H "Authorization: Bearer $TOKEN" \
-            "https://aiplatform.googleapis.com/v1/projects/$GOOGLE_CLOUD_PROJECT/locations/$GOOGLE_CLOUD_LOCATION/reasoningEngines/$AGENT_ID")
+            "https://aiplatform.googleapis.com/v1beta1/projects/$GOOGLE_CLOUD_PROJECT/locations/$GOOGLE_CLOUD_LOCATION/reasoningEngines/$AGENT_ID")
 
         if [ "$HTTP_STATUS" -eq 200 ]; then
             echo "Deleting Agent Engine: $AGENT_ID..."
-            # Delete the Agent Engine
             curl -s -X DELETE \
                 -H "Authorization: Bearer $TOKEN" \
-                "https://aiplatform.googleapis.com/v1/projects/$GOOGLE_CLOUD_PROJECT/locations/$GOOGLE_CLOUD_LOCATION/reasoningEngines/$AGENT_ID?force=true"
+                "https://aiplatform.googleapis.com/v1beta1/projects/$GOOGLE_CLOUD_PROJECT/locations/$GOOGLE_CLOUD_LOCATION/reasoningEngines/$AGENT_ID?force=true"
             echo "Agent Engine: $AGENT_ID deleted."
         elif [ "$HTTP_STATUS" -eq 404 ]; then
             echo "Agent Engine: $AGENT_ID not found, skipping."
@@ -75,13 +78,45 @@ for AGENT_ID in "${AGENT_IDS[@]}"; do
     fi
 done
 
+# --- Delete AlloyDB Instance and Cluster ---
+echo "
+--- Deleting AlloyDB Resources ---"
+# Delete instance first
+if gcloud alloydb instances describe "$INSTANCE_ID" --cluster="$CLUSTER_ID" --region="$GOOGLE_CLOUD_LOCATION" --project="$GOOGLE_CLOUD_PROJECT" &> /dev/null; then
+    echo "Deleting AlloyDB instance: $INSTANCE_ID..."
+    gcloud alloydb instances delete "$INSTANCE_ID" --cluster="$CLUSTER_ID" --region="$GOOGLE_CLOUD_LOCATION" --project="$GOOGLE_CLOUD_PROJECT" --quiet
+else
+    echo "AlloyDB instance: $INSTANCE_ID not found, skipping."
+fi
+
+# Then delete cluster
+if gcloud alloydb clusters describe "$CLUSTER_ID" --region="$GOOGLE_CLOUD_LOCATION" --project="$GOOGLE_CLOUD_PROJECT" &> /dev/null; then
+    echo "Deleting AlloyDB cluster: $CLUSTER_ID..."
+    gcloud alloydb clusters delete "$CLUSTER_ID" --region="$GOOGLE_CLOUD_LOCATION" --project="$GOOGLE_CLOUD_PROJECT" --force --quiet
+else
+    echo "AlloyDB cluster: $CLUSTER_ID not found, skipping."
+fi
+
+# --- Delete Secret Manager Secrets ---
+echo "
+--- Deleting Secret Manager Secrets ---"
+SECRETS=("$DB_USER_SECRET_ID" "$DB_PASS_SECRET_ID" "$DB_INSTANCE_URI_SECRET_ID")
+for SECRET in "${SECRETS[@]}"; do
+    if gcloud secrets describe "$SECRET" --project="$GOOGLE_CLOUD_PROJECT" &> /dev/null; then
+        echo "Deleting secret: $SECRET..."
+        gcloud secrets delete "$SECRET" --project="$GOOGLE_CLOUD_PROJECT" --quiet
+    else
+        echo "Secret: $SECRET not found, skipping."
+    fi
+done
+
 # --- Delete GCS Bucket ---
 echo "
 --- Deleting GCS Bucket ---"
 if [ ! -z "$BUCKET_NAME" ]; then
     if gsutil ls -b gs://$BUCKET_NAME &> /dev/null; then
         echo "Deleting GCS Bucket: $BUCKET_NAME..."
-        gsutil rm -r gs://$BUCKET_NAME
+        gsutil -m rm -r gs://$BUCKET_NAME
     else
         echo "GCS Bucket: $BUCKET_NAME not found, skipping."
     fi
