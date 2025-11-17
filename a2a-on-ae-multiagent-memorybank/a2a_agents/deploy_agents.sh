@@ -22,17 +22,12 @@ source "$PROJECT_ROOT/.env"
 set +a
 
 
-# Deploy specialized agents in parallel
-echo "Deploying Cocktail Agent in the background..."
-python -m specialized_agents.cocktail_agent.deploy_cocktail_agent &
+# Deploy specialized agents sequentially to avoid race conditions
+echo "Deploying Cocktail Agent..."
+python -m specialized_agents.cocktail_agent.deploy_cocktail_agent
 
-echo "Deploying Weather Agent in the background..."
-python -m specialized_agents.weather_agent.deploy_weather_agent &
-
-# Wait for both background jobs to complete
-echo "Waiting for specialized agents to finish deploying..."
-wait
-echo "Both specialized agents have been deployed."
+echo "Deploying Weather Agent..."
+python -m specialized_agents.weather_agent.deploy_weather_agent
 
 # Re-source the environment file to pick up the newly created agent URLs
 set -a

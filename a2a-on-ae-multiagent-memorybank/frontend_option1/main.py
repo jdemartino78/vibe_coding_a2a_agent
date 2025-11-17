@@ -16,7 +16,7 @@
 import asyncio
 import logging
 import os
-from typing import AsyncIterator, List, Dict, Any
+from typing import AsyncIterator, List, Dict, Any, Tuple
 
 import gradio as gr
 import httpx
@@ -130,9 +130,9 @@ async def get_agent_card(resource_name: str) -> object:
 
 async def get_response_from_agent(
     query: str,
-    history: List[gr.ChatMessage],
+    history: List[Tuple[str, str]],
     session_state: Dict[str, Any]
-) -> AsyncIterator[gr.ChatMessage]:
+) -> AsyncIterator[Tuple[List[Tuple[str, str]], Dict[str, Any]]]:
     """Get response from host agent."""
 
     a2a_client: Client = None  # Define client for the finally block
@@ -170,6 +170,7 @@ async def get_response_from_agent(
         }
         if session_state.get("task_id"):
             message_payload["task_id"] = session_state["task_id"]
+        if session_state.get("context_id"):
             message_payload["context_id"] = session_state["context_id"]
 
         message = Message(**message_payload)
@@ -190,63 +191,58 @@ async def get_response_from_agent(
             logger.debug(f"Received task update. Status: {task_object.status.state}")
 
             # Wait for the task to complete
-            if task_object.status.state == TaskState.completed:
-                logger.info("Task completed. Checking for artifacts...")
+            if task_object.status.state in (TaskState.completed, TaskState.failed):
+                logger.info(f"Task reached terminal state: {task_object.status.state}")
                 if hasattr(task_object, "artifacts") and task_object.artifacts:
                     for artifact in task_object.artifacts:
-                        # Find the first text part in the artifacts
                         if artifact.parts and isinstance(artifact.parts[0].root, TextPart):
                             final_result_text = artifact.parts[0].root.text
                             logger.info(f"Found artifact text: {final_result_text[:50]}...")
-                            break  # Stop looking at artifacts
+                            break
                 if final_result_text:
-                    break  # Stop iterating task updates
+                    break
             
-            if task_object.status.state == TaskState.input_required:
+            elif task_object.status.state == TaskState.input_required:
                 logger.info("Task requires more input.")
                 if task_object.status.message and task_object.status.message.parts:
                     final_result_text = task_object.status.message.parts[0].root.text
                     break
 
-
-            # Handle task failure
-            elif task_object.status.state == TaskState.failed:
-                error_message = f"Task failed: {task_object.status.message if task_object.status else 'Unknown error'}"
-                logger.error(error_message)
-                yield gr.ChatMessage(role="assistant", content=error_message), session_state
-                return  # Exit the generator
-        
+        # --- 6. Update Session State based on Final Task Status ---
         if final_task_object:
-            session_state["task_id"] = final_task_object.id
+            # Always persist the context_id to maintain conversation history
             session_state["context_id"] = final_task_object.context_id
 
+            # If the task is in a terminal state, clear the task_id for the next turn
+            if final_task_object.status.state in (TaskState.completed, TaskState.failed):
+                session_state["task_id"] = None
+            else:
+                # Otherwise, persist the task_id to continue the current task
+                session_state["task_id"] = final_task_object.id
 
-        # --- 6. Yield Final Response ---
+        # --- 7. Yield Final Response ---
         if final_result_text:
-            yield gr.ChatMessage(role="assistant", content=final_result_text), session_state
+            history.append((query, final_result_text))
+            yield history, session_state
         else:
             logger.warning("Task finished but no text artifact was found")
-            yield gr.ChatMessage(
-                role="assistant",
-                content="I processed your request but found no text response.",
-            ), session_state
+            no_response_message = "I processed your request but found no text response."
+            history.append((query, no_response_message))
+            yield history, session_state
 
     except Exception as e:
         logger.error(
             f"Error in get_response_from_agent (Type: {type(e).__name__}): {e}", exc_info=True
         )
-        yield gr.ChatMessage(
-            role="assistant",
-            content=f"An error occurred: {e}",
-        ), session_state
+        error_response = f"An error occurred: {e}"
+        history.append((query, error_response))
+        yield history, session_state
     finally:
-        # --- 7. Clean up clients ---
-        # Close the A2A client, which also closes the httpx_client it manages
+        # --- 8. Clean up clients ---
         if a2a_client:
             await a2a_client.close()
             logger.debug("A2A client closed")
         elif httpx_client:
-            # Fallback if a2a_client creation failed but httpx_client was made
             await httpx_client.aclose()
             logger.debug("HTTPX client closed")
 
@@ -256,7 +252,7 @@ async def main() -> None:
 
     with gr.Blocks(theme=gr.themes.Ocean(), title="A2A Host Agent") as demo:
         session_state = gr.State({})
-        # Using gr.Markdown to center the image and title
+        
         with gr.Row():
             gr.Image(
                 "static/a2a.png",
@@ -267,15 +263,39 @@ async def main() -> None:
                 show_download_button=False,
                 container=False,
                 show_fullscreen_button=False,
-                elem_classes=["centered-image"],  # Requires custom CSS
             )
+        
+        gr.Markdown("# A2A Host Agent")
+        gr.Markdown("This assistant can help you to check weather and find cocktail information")
 
-        gr.ChatInterface(
-            get_response_from_agent,
-            title="A2A Host Agent",
-            description="This assistant can help you to check weather and find cocktail information",
-            additional_inputs=[session_state],
-            additional_outputs=[session_state],
+        chatbot = gr.Chatbot()
+        msg = gr.Textbox()
+        clear = gr.ClearButton([msg, chatbot, session_state])
+
+        async def respond(
+            message: str,
+            chat_history: List[Tuple[str, str]],
+            session: Dict[str, Any],
+        ) -> AsyncIterator[Tuple[str, List[Tuple[str, str]], Dict[str, Any]]]:
+            """Wrapper to provide immediate feedback and stream responses."""
+            # 1. Immediately append the user's message to the history
+            chat_history.append((message, None))
+            yield "", chat_history, session
+
+            # 2. Append a placeholder for the bot's response
+            chat_history.append((None, "Thinking..."))
+            yield "", chat_history, session
+
+            # 3. Stream the response from the agent
+            async for bot_response, new_session in get_response_from_agent(
+                message, session
+            ):
+                # 4. Update the placeholder with the final response
+                chat_history[-1] = (None, bot_response)
+                yield "", chat_history, new_session
+
+        msg.submit(
+            respond, [msg, chatbot, session_state], [msg, chatbot, session_state]
         )
 
     # Add a health check endpoint to the underlying FastAPI app
@@ -283,7 +303,7 @@ async def main() -> None:
     async def health_check():
         return {"status": "ok"}
 
-    logger.info("Launching Gradio interface on http://0.0.0.0:8080")
+    logger.info("Launching Gradio interface on http://0.f.0.0:8080")
     demo.queue().launch(
         server_name="0.0.0.0",
         server_port=8080,

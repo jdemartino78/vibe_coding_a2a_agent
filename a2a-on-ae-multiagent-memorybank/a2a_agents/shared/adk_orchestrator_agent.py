@@ -36,10 +36,12 @@ from google.adk.sessions import VertexAiSessionService
 from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 from google.genai import types as genai_types
 import vertexai
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 # Custom Imports
 from shared.a2a_tools import delegate_to_specialist_agent, user_id_context
-from shared.adk_base_mcp_agent_executor import PersistentVertexAiMemoryBankService # Assuming this custom class is available
+from shared.adk_base_mcp_agent_executor import PersistentVertexAiMemoryBankService
+from shared.session_store import get_session_mapping, set_session_mapping
 
 # Set logging
 logging.getLogger().setLevel(logging.INFO)
@@ -87,18 +89,21 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
     Relies on the delegate_to_specialist_agent tool and the LLM's prompt for all A2A logic.
     Uses Vertex AI persistent services for sessions and memory.
     """
-    # In-memory cache for mapping A2A context_id to ADK session objects.
-    CONTEXT_ID_TO_SESSION_MAP = {}
-    MAX_CACHE_SIZE = 1000
 
-    def __init__(self, remote_agent_addresses: list[str] = None, agent_engine_id: str = None) -> None:
+    def __init__(self, remote_agent_addresses: list[str] = None, agent_engine_id: str = None, db_engine: AsyncEngine = None) -> None:
         """
         Initialize with the new Tool-Driven approach.
         """
+        if not agent_engine_id:
+            raise ValueError("agent_engine_id must be provided.")
+        if not db_engine:
+            raise ValueError("db_engine must be provided.")
+
         self.remote_agent_addresses = remote_agent_addresses
         self.agent = None
         self.runner = None
         self.agent_engine_id = agent_engine_id
+        self.db_engine = db_engine
 
         self.project_id = os.environ.get("PROJECT_ID")
         self.location = os.environ.get("LOCATION")
@@ -106,9 +111,6 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
             raise ValueError(
                 "Both PROJECT_ID and LOCATION must be set as environment variables."
             )
-
-        if self.agent_engine_id is None:
-            self.agent_engine_id = self.get_agent_engine()
 
         self._init_agent()
 
@@ -134,8 +136,6 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
                 location=self.location,
                 agent_engine_id=self.agent_engine_id,
             )
-            # Provide a placeholder session service to satisfy the Runner's constructor.
-            # The actual, request-specific service will be created in the execute() method.
             my_session_service = VertexAiSessionService(
                 project=self.project_id,
                 location=self.location,
@@ -149,14 +149,6 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
                 session_service=my_session_service,
                 memory_service=my_memory_service,
             )
-
-    def get_agent_engine(self) -> str:
-        """
-        This method is responsible for setting up the Vertex AI Agent Engine for the Memory Bank.
-        It is retained from the original project structure and assumed to be functional.
-        """
-        logging.info("Using placeholder get_agent_engine. Please replace with production Memory Bank setup if needed.")
-        return "placeholder-orchestrator-engine"
         
 
     async def execute(
@@ -186,10 +178,8 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
 
         token = None
         try:
-            # Set the user_id in the context for the delegation tool to access
             token = user_id_context.set(user_id)
 
-            # Create the session service here, per-request
             session_service = VertexAiSessionService(
                 project=self.project_id,
                 location=self.location,
@@ -226,18 +216,16 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
             )
             raise
         finally:
-            # Reset the context variable to its previous state
             if token:
                 user_id_context.reset(token)
 
     async def _get_or_create_session(self, session_service: VertexAiSessionService, context_id: str, user_id: str):
         """
-        Gets or creates a Vertex AI session, managing a mapping from A2A context_id
-        to the valid Vertex AI session ID.
+        Gets or creates a Vertex AI session, using the database to map A2A context_id
+        to the Vertex AI session ID.
         """
-        # We'll create a unique key based on both user and conversation context
         session_key = f"{user_id}-{context_id}"
-        vertex_session_name = self.CONTEXT_ID_TO_SESSION_MAP.get(session_key)
+        vertex_session_name = await get_session_mapping(self.db_engine, session_key)
 
         if vertex_session_name:
             logging.info(f"Found existing session mapping for key {session_key}: {vertex_session_name}")
@@ -258,13 +246,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
             user_id=user_id,
         )
         
-        if len(self.CONTEXT_ID_TO_SESSION_MAP) >= self.MAX_CACHE_SIZE:
-            # Remove the oldest item
-            oldest_key = next(iter(self.CONTEXT_ID_TO_SESSION_MAP))
-            del self.CONTEXT_ID_TO_SESSION_MAP[oldest_key]
-            logging.info(f"Cache full. Removed oldest session: {oldest_key}")
-
-        self.CONTEXT_ID_TO_SESSION_MAP[session_key] = new_session.id
+        await set_session_mapping(self.db_engine, session_key, new_session.id)
         logging.info(f"Created and mapped new session {new_session.id} for key {session_key}")
         
         return new_session

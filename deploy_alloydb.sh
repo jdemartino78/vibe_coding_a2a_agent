@@ -164,13 +164,36 @@ INSTANCE_IP=$(gcloud alloydb instances describe "$INSTANCE_ID" --cluster="$CLUST
 echo "Instance Public IP: $INSTANCE_IP"
 psql "host=$INSTANCE_IP user=postgres dbname=postgres" -c "CREATE DATABASE $DB_NAME;" || echo "Database '$DB_NAME' may already exist."
 
-# 7. Create the Database User
-echo "Creating Database User: $DB_USER..."
+# 7. Create or Update the Database User & Grant Permissions
+echo "Creating or updating Database User: $DB_USER..."
 DB_PASSWORD=$(openssl rand -base64 16)
-psql "host=$INSTANCE_IP user=postgres dbname=postgres" -c "DROP USER IF EXISTS $DB_USER;"
-psql "host=$INSTANCE_IP user=postgres dbname=postgres" -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASSWORD';"
-psql "host=$INSTANCE_IP user=postgres dbname=$DB_NAME" -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;"
-echo "Database user $DB_USER created and granted privileges."
+
+# Check if user exists. If so, alter password. If not, create user.
+if psql "host=$INSTANCE_IP user=postgres dbname=postgres" -tAc "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'" | grep -q 1; then
+    echo "User '$DB_USER' exists. Altering password."
+    psql "host=$INSTANCE_IP user=postgres dbname=postgres" -c "ALTER USER $DB_USER WITH PASSWORD '$DB_PASSWORD';"
+else
+    echo "User '$DB_USER' does not exist. Creating user."
+    psql "host=$INSTANCE_IP user=postgres dbname=postgres" -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASSWORD';"
+fi
+
+# Grant CONNECT on the database (safe to run multiple times)
+psql "host=$INSTANCE_IP user=postgres dbname=postgres" -c "GRANT CONNECT ON DATABASE $DB_NAME TO $DB_USER;"
+echo "CONNECT privilege granted on database $DB_NAME to $DB_USER."
+
+# Grant Schema privileges within the DB_NAME database (safe to run multiple times)
+psql "host=$INSTANCE_IP user=postgres dbname=$DB_NAME" -c "GRANT ALL ON SCHEMA public TO $DB_USER;"
+echo "USAGE and CREATE privileges granted on schema public to $DB_USER within $DB_NAME."
+
+# Set default privileges for tables created by a2a_agent_user or other roles in the future (safe to run multiple times)
+psql "host=$INSTANCE_IP user=postgres dbname=$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO $DB_USER;"
+echo "Default table privileges set for $DB_USER in schema public."
+
+# Set default privileges for sequences created by a2a_agent_user or other roles in the future (safe to run multiple times)
+psql "host=$INSTANCE_IP user=postgres dbname=$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO $DB_USER;"
+echo "Default sequence privileges set for $DB_USER in schema public."
+
+echo "Database user $DB_USER privileges are set."
 
 # Unset PGPASSWORD after use
 unset PGPASSWORD
@@ -178,31 +201,31 @@ unset PGPASSWORD
 # 8. Store Credentials in Secret Manager
 echo "Storing credentials in Secret Manager..."
 
+# Function to create or update a secret
+create_or_update_secret() {
+  local secret_id=$1
+  local data=$2
+  if gcloud secrets describe "$secret_id" --project="$PROJECT_ID" &>/dev/null; then
+    echo "Secret '$secret_id' exists. Adding new version."
+    echo -n "$data" | gcloud secrets versions add "$secret_id" --data-file=- --project="$PROJECT_ID"
+  else
+    echo "Secret '$secret_id' does not exist. Creating it."
+    echo -n "$data" | gcloud secrets create "$secret_id" \
+      --data-file=-\
+      --replication-policy=automatic \
+      --project="$PROJECT_ID"
+  fi
+}
+
 # Store DB User
-echo -n "$DB_USER" | gcloud secrets create "$DB_USER_SECRET_ID" \
-  --data-file=-\
-  --replication-policy=automatic \
-  --project="$PROJECT_ID" --quiet || \
-gcloud secrets versions add "$DB_USER_SECRET_ID" --data-file=- --project="$PROJECT_ID" --quiet
+create_or_update_secret "$DB_USER_SECRET_ID" "$DB_USER"
 
 # Store DB Password
-echo -n "$DB_PASSWORD" | gcloud secrets create "$DB_PASS_SECRET_ID" \
-  --data-file=-\
-  --replication-policy=automatic \
-  --project="$PROJECT_ID" --quiet || \
-gcloud secrets versions add "$DB_PASS_SECRET_ID" --data-file=- --project="$PROJECT_ID" --quiet
+create_or_update_secret "$DB_PASS_SECRET_ID" "$DB_PASSWORD"
 
 # Store Instance Connection Name
 INSTANCE_URI=$(gcloud alloydb instances describe "$INSTANCE_ID" --cluster="$CLUSTER_ID" --region="$REGION" --format='value(name)')
-echo -n "$INSTANCE_URI" | gcloud secrets create "$DB_INSTANCE_URI_SECRET_ID" \
-  --data-file=-\
-  --replication-policy=automatic \
-  --project="$PROJECT_ID" --quiet || \
-gcloud secrets versions add "$DB_INSTANCE_URI_SECRET_ID" --data-file=- --project="$PROJECT_ID" --quiet
-
-
-
-
+create_or_update_secret "$DB_INSTANCE_URI_SECRET_ID" "$INSTANCE_URI"
 
 echo "---"
 echo "AlloyDB setup complete!"

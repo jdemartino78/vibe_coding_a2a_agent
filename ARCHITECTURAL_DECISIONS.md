@@ -1,100 +1,88 @@
-# Architectural Decisions: The Wrapper Pattern for State Management
+# Backend Architecture Guide
 
-This document explains the design choice to separate the agent's core logic (`AdkOrchestratorAgentExecutor`) from its state management capabilities (`StatefulAgentExecutor`). While it might seem simpler to combine these into a single class, the separation is a deliberate and foundational architectural pattern that ensures the system is robust, testable, and scalable.
+This document explains the backend architecture of the A2A multi-agent system. It covers the codebase structure, core design patterns, state management, and the agent-to-agent communication protocol.
 
-## The Guiding Principle: Separation of Concerns
+## Guiding Principle: Separating Logic from Infrastructure
 
-The primary driver for this design is a core software engineering principle called the **Single Responsibility Principle (SRP)**. It states that a class should have only one reason to change.
+The architecture's primary goal is to separate the agent's "brain" from its "shell."
 
-In our context, this means:
--   **Core Agent Logic:** One "reason to change" is the agent's reasoning process—its instructions, the tools it uses, how it interprets results.
--   **State Management:** A completely separate "reason to change" is *how* the agent's conversation history is stored and retrieved (e.g., in-memory, in a database, in Redis, etc.).
+-   **Agent Logic (Brain):** This is the agent's reasoning core. It includes the LLM prompts, tool definitions, and the decision-making process for a single turn of a conversation.
+-   **Infrastructure (Shell):** This is the surrounding system that handles state persistence, database connections, authentication, and the low-level details of the A2A communication protocol.
 
-Fusing these two concerns into a single class creates a "monolithic" component that is harder to manage over time. Separating them creates modular, "plug-and-play" components.
-
----
-
-## Scenario Analysis: A Side-by-Side Comparison
-
-Let's analyze the two approaches to understand the trade-offs.
-
-### Approach 1: The Monolithic Design (Combining State and Logic)
-
-In this design, we would delete `StatefulAgentExecutor` and merge its responsibilities directly into the `AdkOrchestratorAgentExecutor`.
-
-#### Conceptual Code
-
-```python
-# A conceptual monolithic agent
-class AdkOrchestratorAgentExecutor(AgentExecutor):
-    def __init__(self, task_store: TaskStore, remote_agent_addresses: list[str]):
-        # The agent now directly depends on and manages the TaskStore
-        self._task_store = task_store
-        # ... all other agent setup (LLM, tools, etc.) ...
-
-    async def execute(self, context: RequestContext, event_queue: EventQueue):
-        # --- Responsibility 1: State Management ---
-        message = context.message
-        if message and message.task_id:
-            task = await self._task_store.get(message.task_id)
-            if task is None:
-                message.task_id = None
-        # --- End of State Management ---
-
-        # --- Responsibility 2: Core Agent Logic ---
-        raw_query = context.get_user_input()
-        session = await self._get_or_create_session(...)
-        # ... run the agent, call tools, synthesize the answer ...
-        # --- End of Core Agent Logic ---
-```
-
-#### The Downsides of This Approach
-
-1.  **Poor Reusability:** Imagine you need to build a new, simple `MetricsAgent` that just answers a single question and doesn't need to remember conversation history. You cannot reuse any part of the `AdkOrchestratorAgentExecutor` without also bringing in the unnecessary complexity of the `TaskStore`. You are forced to write a new class from scratch or inherit a lot of logic you don't need.
-
-2.  **Complex and Brittle Testing:** To write a simple unit test for the agent's reasoning (e.g., "Does the agent choose the correct tool for this query?"), you are now **forced** to create a `TaskStore` instance (and likely mock it) for every single test. Your tests become more complicated and coupled to the implementation details of state management, even when you only want to test the agent's logic.
-
-3.  **Tight Coupling and Rigidity:** The agent's core logic is now permanently fused to its state management mechanism. If you decide to change how state is managed (e.g., add caching, switch from a database to a different storage system), you have to modify the core `AdkOrchestratorAgentExecutor` class. This is risky, as changes to the state logic could inadvertently break the reasoning logic.
+This separation makes the system more flexible, easier to test, and simpler to maintain.
 
 ---
 
-### Approach 2: The Wrapper/Decorator Pattern (The Current Design)
+## 1. Codebase Structure
 
-This design keeps the two responsibilities in separate classes.
+The code within `a2a-on-ae-multiagent-memorybank/a2a_agents/` is organized by function to enforce the separation of concerns.
 
--   **`AdkOrchestratorAgentExecutor` (The "Brain"):** Has one job: Execute the logic for a **single turn**. It is completely unaware of how conversations are persisted over time.
--   **`StatefulAgentExecutor` (The "Memory Manager"):** Has one job: Manage the **continuity between turns**. It wraps the "Brain" and ensures the correct task is loaded from the `TaskStore` before the Brain does its work.
+-   `orchestrator/`: Contains the central **Orchestrator Agent**. This is the user-facing component that manages the overall task.
+-   `specialized_agents/`: Contains the simple, stateless "worker" agents (`cocktail_agent`, `weather_agent`). These agents act as tools that the orchestrator can call to perform specific tasks.
+-   `shared/`: Contains code used by all agents. This is where the infrastructure, state management, communication clients, and core patterns are implemented.
 
-#### The Upsides of This Approach
+---
 
-1.  **High Reusability ("Plug-and-Play"):** This is the most significant advantage. Statefulness becomes a feature you can add to *any* agent, new or old, without changing its code.
+## 2. Core Design Patterns
 
-    ```python
-    # Create any number of "core" agents that are simple and stateless
-    orchestrator_brain = AdkOrchestratorAgentExecutor(...)
-    weather_brain = SimpleWeatherAgent(...)
+### Composition over Inheritance
 
-    # Now, create the final agent instances.
-    # The orchestrator needs memory.
-    production_orchestrator = StatefulAgentExecutor(
-        core_executor=orchestrator_brain,
-        task_store=my_database_task_store
-    )
+The system strongly prefers Composition (a class *has a* dependency) over Inheritance (a class *is a* dependency).
 
-    # The weather agent doesn't need memory.
-    production_weather_agent = weather_brain
-    ```
+-   **Implementation:** The `OrchestratorAgentExecutor` (the Shell) holds an instance of `AdkOrchestratorAgentExecutor` (the Brain). The Shell's responsibility is infrastructure: it manages the asynchronous setup of the database and the A2A task lifecycle. The Brain is responsible only for the agent's reasoning during a single turn and has no knowledge of the database.
+-   **Benefit:** This pattern allows the Brain's complex reasoning to be unit-tested in isolation, without needing to create or mock a database connection. It also allows the entire infrastructure Shell to be replaced or modified without impacting the core agent logic.
 
-2.  **Simplified and Focused Testing:** You can test the complex reasoning of `AdkOrchestratorAgentExecutor` in complete isolation, without ever needing to create or mock a `TaskStore`. Your tests for the agent's logic are simple and focused. Separately, you can write a very simple test for `StatefulAgentExecutor` to confirm it works as expected.
+### Inheritance
 
-3.  **Flexibility and Maintainability ("Loose Coupling"):** The components are independent. You can change the entire storage backend by just plugging a different `TaskStore` into the `StatefulAgentExecutor` at the application's entry point. The `AdkOrchestratorAgentExecutor` code remains untouched and stable. This makes the system much easier to maintain and evolve.
+Inheritance is used pragmatically and only when required to conform to the A2A framework's interface. `OrchestratorAgentExecutor` *is an* `a2a.server.agent_execution.AgentExecutor` because the framework requires this specific class structure to correctly serve the agent.
 
-## Conclusion
+### Dependency Injection and Lazy Initialization
 
-While adding the `StatefulAgentExecutor` wrapper may seem like an extra layer of complexity at first glance, it is a standard and highly effective design pattern for building robust software. It pays significant dividends in the long run by making the system:
+The system creates dependencies once at startup and injects them where needed.
 
--   **More Testable:** Components can be tested independently.
--   **More Reusable:** Capabilities (like statefulness) can be easily applied to new components.
--   **More Maintainable:** Changes to one part of the system are less likely to break others.
+-   **Implementation:** The `shared/dependencies.py` module is responsible for creating a single, shared connection pool (`AsyncEngine`) to the AlloyDB database. This connection is initialized "lazily" on the first incoming request via the `OrchestratorAgentExecutor._ensure_setup` method. This method then passes, or "injects," the database engine into the other components that require it, such as the session store.
+-   **Benefit:** This solves a critical challenge: database connections are `async`, but class constructors (`__init__`) are `sync`. By delaying initialization until the first `async` request, we handle the async lifecycle correctly and ensure a single, efficient connection pool is shared across the application.
 
-This architectural choice is a direct investment in the long-term health and scalability of the agent.
+---
+
+## 3. Agent Communication & Security
+
+The `shared/` directory contains a set of modules that work together to enable secure communication between the orchestrator and the specialized agents.
+
+### `a2a_tools.py`: The High-Level Interface
+
+-   **Purpose:** This module defines the `delegate_to_specialist_agent` function. This function is exposed as a "tool" to the orchestrator's LLM.
+-   **Mechanism:** When the orchestrator's LLM decides to delegate a task, it generates a tool call with the target agent's name and a query. This function receives that call and acts as the entry point for agent-to-agent communication. It uses the `RemoteAgentConnection` to handle the actual network request.
+
+### `remote_connection.py`: The A2A Client
+
+-   **Purpose:** This module provides the `RemoteAgentConnection` class, a low-level client for making A2A protocol calls.
+-   **Mechanism:** This class abstracts the details of the A2A protocol. It knows how to fetch an agent's "card" (a manifest of its capabilities), construct a valid A2A message, send the request over HTTP, and poll for the final result of the task. It uses `auth_utils.py` to get the necessary authentication tokens for its requests.
+
+### `auth_utils.py`: Secure Authentication
+
+-   **Purpose:** This module handles the authentication required for one Google Cloud service (the orchestrator's Cloud Run instance) to securely call another (the specialized agent's Cloud Run instance).
+-   **Mechanism:** It contains the `get_auth_token` function, which programmatically requests a Google-signed OIDC identity token for the specialized agent's URL. This token is then attached as a `Bearer` token in the `Authorization` header of the HTTP request made by the `RemoteAgentConnection`. This is a standard and secure way to handle service-to-service authentication on Google Cloud.
+
+### `custom_context_builder.py`: Passing User Identity
+
+-   **Purpose:** The A2A protocol does not have a built-in field for the end-user's identity. This module provides a mechanism to pass the `user_id` from the orchestrator to the specialized agents.
+-   **Mechanism:** It uses Python's `contextvars` to create a request-scoped context. The `AdkOrchestratorAgentExecutor` sets the `user_id` in this context at the beginning of a request. The `delegate_to_specialist_agent` tool then reads the `user_id` from this context and includes it in the A2A message's metadata field, ensuring the specialized agents know which user the request belongs to.
+
+---
+
+## 4. Three Layers of Persistent State
+
+The agent's state is managed in three distinct layers, all persisting to a single AlloyDB database to ensure data integrity and resilience to server restarts.
+
+### Layer 1: A2A Task Lifecycle (`DatabaseTaskStore`)
+
+This layer tracks the status of a single user request according to the A2A protocol. The `DatabaseTaskStore` from the `a2a-sdk` automatically creates and manages a `tasks` table in AlloyDB. The orchestrator updates the task's status (`running`, `completed`, `failed`) throughout its execution. This allows a user to query the status of any job, especially long-running ones.
+
+### Layer 2: Conversational Context (`SessionStore`)
+
+This layer preserves the history of a conversation across multiple turns, preventing agent amnesia. The A2A protocol uses a `context_id` to track a conversation, while the underlying Google ADK framework uses a `session_id`. Our custom `session_store.py` module creates a `session_mappings` table to link these two IDs. When a request arrives, the agent looks up the `context_id` to find the corresponding ADK `session_id`, which allows it to retrieve the full conversation history.
+
+### Layer 3: Long-Term Knowledge (`MemoryBank`)
+
+This layer allows the agent to learn and recall facts across many conversations. We use the Google ADK's `MemoryBank` feature, configured with the `PersistentVertexAiMemoryBankService` to ensure memories are stored durably. The `PreloadMemoryTool` automatically retrieves relevant memories and injects them into the agent's context at the start of each turn, providing it with long-term knowledge.

@@ -12,8 +12,11 @@ from a2a.server.tasks import DatabaseTaskStore
 
 logger = logging.getLogger(__name__)
 
-# Global variable to hold the initialized TaskStore
+# Global variables to hold the initialized instances
 database_task_store: DatabaseTaskStore | None = None
+_db_engine: sqlalchemy.ext.asyncio.engine.AsyncEngine | None = None
+_db_connector: AsyncConnector | None = None
+
 
 async def create_sqlalchemy_engine(
     inst_uri: str,
@@ -73,7 +76,11 @@ async def create_sqlalchemy_engine(
     return engine, connector
 
 async def initialize_dependencies():
-    global database_task_store
+    global database_task_store, _db_engine, _db_connector
+
+    if _db_engine is not None:
+        logger.info("Dependencies already initialized.")
+        return
 
     project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
     if not project_id:
@@ -102,7 +109,7 @@ async def initialize_dependencies():
         raise RuntimeError("Failed to retrieve AlloyDB credentials.") from e
 
     # Create SQLAlchemy engine
-    engine, connector = await create_sqlalchemy_engine(
+    _db_engine, _db_connector = await create_sqlalchemy_engine(
         db_instance_uri,
         db_user,
         db_pass,
@@ -110,7 +117,7 @@ async def initialize_dependencies():
     )
 
     # Initialize DatabaseTaskStore
-    database_task_store = DatabaseTaskStore(engine)
+    database_task_store = DatabaseTaskStore(_db_engine)
     await database_task_store.initialize()
 
     logger.info("Dependencies initialized: DatabaseTaskStore is ready.")
@@ -119,3 +126,9 @@ def get_database_task_store() -> DatabaseTaskStore:
     if database_task_store is None:
         raise RuntimeError("DatabaseTaskStore has not been initialized. Call initialize_dependencies first.")
     return database_task_store
+
+def get_db_engine() -> sqlalchemy.ext.asyncio.engine.AsyncEngine:
+    """Returns the initialized SQLAlchemy engine."""
+    if _db_engine is None:
+        raise RuntimeError("Database engine has not been initialized. Call initialize_dependencies first.")
+    return _db_engine

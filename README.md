@@ -1,4 +1,4 @@
-# Vibe Coding: Building an A2A Agentic System (Live Training)
+# Vibe Coding: Building a Stateful A2A Multi-Agent System
 
 > **⚠️ DISCLAIMER**: THIS DEMO IS INTENDED FOR DEMONSTRATION PURPOSES ONLY. IT IS NOT INTENDED FOR USE IN A PRODUCTION ENVIRONMENT.
 >
@@ -7,23 +7,21 @@
 > **⚠️ Important**: Please run this lab in **Cloud Shell** to ensure you have the proper permissions.
 
 ## Overview
-In this 1-hour session, we will build and deploy a multi-agent system using the A2A (Agent-to-Agent) protocol. This system will include a 'Orchestrator' agent that communicates with 'Weather' and 'Cocktail' agents to fulfill user requests.
+In this session, we will build and deploy a **stateful, production-ready multi-agent system** using the A2A (Agent-to-Agent) protocol. This system features an 'Orchestrator' agent that intelligently delegates tasks to specialized 'Weather' and 'Cocktail' agents. All agent memory, including task status and conversation history, is persisted in a robust **AlloyDB** database, ensuring the system is resilient and maintains context across interactions.
 
 ## Learning Objectives
 By the end of this session, you will be able to:
 - Understand the core concepts of the A2A protocol.
+- Implement a persistent state management system for agents using AlloyDB.
+- Understand the difference between task state, conversational state, and long-term memory.
 - Deploy a tool-using agent (ADK) to Agent Engine.
-- Implement agent-to-agent communication.
-- Understand the architecture of a multi-agent system with a hosting agent and specialized agents.
-- Deploy MCP servers on Cloud Run.
+- Implement secure agent-to-agent communication on Google Cloud.
+- Deploy MCP (Model Context Protocol) servers on Cloud Run.
 
 ## Prerequisites
 - `gcloud` CLI
 - `uv` (Python package manager)
-- Install `uv` by following the instructions at https://github.com/astral-sh/uv#installation. For example, on Linux:
-  ```bash
-  curl -LsSf https://astral.sh/uv/install.sh | sh
-  ```
+- `psql` (PostgreSQL interactive terminal)
 - Python 3.12+
 - Docker
 - A Google Cloud Project with billing enabled.
@@ -32,164 +30,117 @@ By the end of this session, you will be able to:
     - Vertex AI
     - Cloud Build
     - Artifact Registry
-    - Telemetry API 
+    - **AlloyDB**
+    - **Secret Manager**
 
 ## Step-by-Step Instructions
 
 ### 0. Authentication
 
-Before proceeding, ensure your `gcloud` CLI is authenticated and configured for your Google Cloud project.
-
-1.  **Authenticate with Google Cloud:**
-    Log in to your Google Cloud account:
-    ```bash
-    gcloud auth login
-    ```
-
-2.  **Set Application Default Credentials:**
-    This command sets up credentials for applications to use Google Cloud APIs:
-    ```bash
-    gcloud auth application-default login
-    ```
-
-3.  **Set Quota Project:**
-    Configure the project to be used for billing and quota management:
-    ```bash
-    gcloud auth application-default set-quota-project $GOOGLE_CLOUD_PROJECT
-    ```
-    **Note:** `$GOOGLE_CLOUD_PROJECT` will be set after running `./configure.sh` in the next step.
+Ensure your `gcloud` CLI is authenticated and configured for your Google Cloud project.
+```bash
+gcloud auth login
+gcloud auth application-default login
+```
 
 ### 1. Environment Setup
 
-Run the configuration script. It will prompt you for your Google Cloud Project ID, Project Number, and a **unique Google Cloud Storage Bucket Name**. This will create a central `.env` file in the project root with all necessary environment variables.
+Run the configuration script. It will prompt you for your Project ID, Project Number, and a unique GCS Bucket Name. This creates a central `.env` file with all necessary environment variables.
 ```bash
 ./configure.sh
+source .env
+gcloud auth application-default set-quota-project $GOOGLE_CLOUD_PROJECT
 ```
 
-### 2. Grant IAM Permissions
-The following IAM roles are required for the Agent Engine Service Agent and the Compute Engine Service Account to interact correctly with Vertex AI and Cloud Run.
+### 2. Deploy the AlloyDB Database
 
-*   **Agent Engine Service Agent:**
-    *   `roles/aiplatform.user` (Vertex AI User)
-    *   `roles/run.invoker` (Cloud Run Invoker)
-
-*   **Compute Engine Service Account:**
-    *   `roles/aiplatform.user` (Vertex AI User)
-    *   `roles/run.invoker` (Cloud Run Invoker)
-    *   `roles/artifactregistry.writer` (Artifact Registry Writer)
-
-Run the following commands to grant these permissions. The script will use the `GOOGLE_CLOUD_PROJECT` and `PROJECT_NUMBER` variables from the `.env` file you just created.
-
+This script provisions a new AlloyDB cluster and instance, creates the database and user, and stores the credentials securely in Secret Manager.
 ```bash
-# Grant Vertex AI User and Cloud Run Invoker to the Agent Engine Service Account
-gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
-    --member="serviceAccount:service-$PROJECT_NUMBER@gcp-sa-aiplatform-re.iam.gserviceaccount.com" \
-    --role="roles/aiplatform.user"
-
-gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
-    --member="serviceAccount:service-$PROJECT_NUMBER@gcp-sa-aiplatform-re.iam.gserviceaccount.com" \
-    --role="roles/run.invoker"
-
-**Note on the Agent Engine Service Agent:** The `gcp-sa-aiplatform-re.iam.gserviceaccount.com` service account is managed by Google and is created automatically only when the first Agent Engine is deployed in your project. If the two commands above fail with a "service account not found" error, it is safe to proceed with the next steps. Simply return to this section and run these two commands again after you have successfully deployed your agents in Step 3.
-
-# Grant Vertex AI User, Cloud Run Invoker, and Artifact Registry Writer to the Compute Engine Service Account
-gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
-    --member="serviceAccount:$PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
-    --role="roles/aiplatform.user"
-
-gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
-    --member="serviceAccount:$PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
-    --role="roles/run.invoker"
-
-gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
-    --member="serviceAccount:$PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
-    --role="roles/artifactregistry.writer"
+./deploy_alloydb.sh
 ```
 
+### 3. Deploy Tooling Servers (MCP Servers)
 
-### 2. Deploy Tooling Servers (Model Context Protocol Servers)
-
-Next, deploy the two MCP (Model Context Protocol) servers. These are the backend tools (Cocktail and Weather APIs) that your agents will call.
-
-Run the following command from the project root:
+Deploy the two backend tools (Cocktail and Weather APIs) that your specialized agents will call. This script deploys them to Cloud Run and updates your `.env` file with their URLs.
 ```bash
 ./mcp_servers/deploy_mcp_servers.sh
 ```
-This script will deploy both the Cocktail and Weather MCP servers in parallel to Cloud Run. It will then automatically construct their service URLs (in the format `https://<service-name>-<project-number>.<region>.run.app/mcp/`) and update the `CT_MCP_SERVER_URL` and `WEA_MCP_SERVER_URL` variables in your `.env` file.
 
-Your `.env` file in the **project root** should now have the URLs populated, similar to this:
-```env
-# ... (other variables)
-CT_MCP_SERVER_URL="https://cocktail-mcp-server-....<project-number>.<region>.run.app/mcp/"
-WEA_MCP_SERVER_URL="https://weather-remote-mcp-server-....<project-number>.<region>.run.app/mcp/"
-# ... (other variables)
+### 4. Deploy A2A Agents
+
+This step deploys the Orchestrator, Cocktail, and Weather agents to Vertex AI Agent Engine. The deployment script will also automatically grant all necessary IAM permissions.
+
+```bash
+./a2a-on-ae-multiagent-memorybank/a2a_agents/deploy_agents.sh
 ```
 
-### 3. Deploy A2A Agents
+#### A Note on IAM Permissions
+For your reference, the deployment script automatically grants the following roles. You do not need to run these commands manually.
 
-Now we deploy the agents. The HostingAgent is our Orchestrator. It will find the CocktailAgent and WeatherAgent by reading their Agent Card, which is the 'business card' that describes what an agent can do.
+*   **Agent Engine Service Agent (`service-...@gcp-sa-aiplatform-re.iam.gserviceaccount.com`):**
+    *   `roles/run.invoker`: To invoke the specialized agents on Cloud Run.
 
-Now, we will deploy our three agents to Vertex AI Agent Engine.
+*   **Compute Engine Service Account (`...-compute@developer.gserviceaccount.com`):**
+    *   `roles/aiplatform.user`: To interact with Vertex AI services.
+    *   `roles/run.invoker`: To invoke other services.
+    *   `roles/artifactregistry.writer`: To push container images.
+    *   `roles/alloydb.client`: To connect to the AlloyDB database.
+    *   `roles/secretmanager.secretAccessor`: To read database credentials from Secret Manager.
 
-1.  **Create and Activate Virtual Environment & Install Agent Dependencies:**
-    Navigate to the agents directory, create a virtual environment, install dependencies, and then install the local package in editable mode. **Ensure `google-cloud-aiplatform` is at least version `1.127.0` to avoid `TypeError: _default_instrumentor_builder() got an unexpected keyword argument 'enable_tracing'`.**
-    ```bash
-    (cd a2a-on-ae-multiagent-memorybank/a2a_agents && uv venv && source .venv/bin/activate && uv sync --python 3.12 && uv pip install -e .)
-    ```
+### 5. Run the Frontend
 
-2.  **Deploy All Agents:**
-    Run the `deploy_agents.sh` script to deploy all agents:
-    ```bash
-    (cd a2a-on-ae-multiagent-memorybank/a2a_agents && ./deploy_agents.sh)
-    ```
-    This script will deploy the agents and save their URLs and Engine IDs in the root `.env` file.
+Run the Gradio frontend locally to interact with your agent system. The script will install dependencies and start the web server.
 
-### 4. Run the Frontend
+```bash
+./a2a-on-ae-multiagent-memorybank/frontend_option1/deploy_frontend.sh --mode local
+```
 
-This Gradio app is our A2A Client. It only knows about the HostingAgent. We will ask it for a cocktail, and it will orchestrate the other agents to get the answer.
+### 6. Test the System
 
-We will run the Gradio frontend locally to interact with our agent system.
+Open your web browser to `http://127.0.0.1:8080`. You can now chat with your multi-agent system.
 
-1.  **Run the local deployment script:**
-    ```bash
-    (cd a2a-on-ae-multiagent-memorybank/frontend_option1 && ./deploy_frontend.sh --mode local)
-    ```
+Here are several test cases, ranging from simple to complex, to validate the full capabilities of the agent.
 
-#### Deploying to Cloud Run (Optional)
-You can also deploy the frontend to Cloud Run.
+**Test 1: Simple Delegation**
 
-1.  **Run the Cloud Run deployment script:**
-    ```bash
-    (cd a2a-on-ae-multiagent-memorybank/frontend_option1 && ./deploy_frontend.sh --mode cloudrun)
-    ```
-    This script will build the container image, deploy the service to Cloud Run, and set up the necessary IAM permissions. Once deployed, you can access the frontend at the URL provided in the output.
+These queries test if the orchestrator can correctly route a single request to the appropriate specialized agent.
 
-### 5. Test the System
+-   `Please get weather forecast for New York`
+-   `What ingredients are in a Margarita?`
 
-Open your web browser and go to `http://127.0.0.1:8080`. You can now chat with your multi-agent system!
+**Test 2: Multi-Turn Conversation & Context**
 
-Try asking it:
-- `Please get weather forecast for New York`
-- `Please list a random cocktail`
-- `What ingredients are in a Margarita?`
+This sequence tests the agent's conversational memory, which is persisted in the AlloyDB session store.
+
+1.  **First Turn:** Ask for a cocktail.
+    > `Give me a random cocktail.`
+2.  **Second Turn:** The agent will respond with a cocktail (e.g., a "Royal Flush"). Now, ask a follow-up question that relies on the previous context.
+    > `Great, what's the weather in a good city to drink that?`
+
+The orchestrator should use its reasoning to infer a relevant city (e.g., Las Vegas for a Royal Flush) and then call the Weather Agent. This proves the session is being correctly maintained between turns.
+
+**Test 3: Complex Reasoning and Information Synthesis**
+
+This single query requires the agent to perform a multi-step plan, extract information from one tool's output, and use it as the input for another tool.
+
+> `I'm planning a trip. Give me a classic, sophisticated cocktail to drink, and tell me what the weather is like right now in the city where that drink was invented.`
+
+To answer this, the agent must:
+1.  Call the **Cocktail Agent** to find a classic cocktail.
+2.  **Extract the city of origin** from the cocktail's data (e.g., "Louisville").
+3.  Call the **Weather Agent** using the extracted city.
+4.  **Synthesize** both results into a single, helpful answer.
 
 ## What We Just Built
-Congratulations! You have successfully built a multi-agent system.
+Congratulations! You have successfully built a stateful multi-agent system.
 - A **Gradio Frontend** (our client)
-- Talked to a **Hosting Agent** (our orchestrator)
+- Talked to an **Orchestrator Agent**
 - Which discovered and called two **Specialized Agents** (Cocktail and Weather)
 - Which in turn called their own **Tools** (the MCP Servers)
+- Crucially, the entire system is **stateful**, with all task and conversation history persisted in a robust **AlloyDB** database.
 
 Here is the architecture you deployed:
 ![architecture](a2a-on-ae-multiagent-memorybank/asset/a2a_ae_diagram.png)
-
-## Project Structure
-This project is organized into three main components:
--   `mcp_servers/`: Contains the backend tool servers for the Cocktail and Weather agents. These are deployed as Cloud Run services.
--   `a2a-on-ae-multiagent-memorybank/a2a_agents/`: Contains the source code for the three agents (Hosting, Cocktail, and Weather) and their deployment scripts.
--   `a2a-on-ae-multiagent-memorybank/frontend_option1/`: A Gradio-based web interface for interacting with the deployed agents.
-
-
 
 ## Learn More
 - [Agent Development Kit (ADK)](https://github.com/GoogleCloudPlatform/agent-development-kit)
@@ -197,9 +148,8 @@ This project is organized into three main components:
 - [Vertex AI Agent Engine](https://cloud.google.com/vertex-ai/docs/agent-engine/overview)
 
 ## Cleanup
-To avoid incurring future charges, you can delete the resources created during this lab by running the cleanup script.
+To avoid incurring future charges, run the cleanup script. This will deprovision the agents, MCP servers, and the AlloyDB cluster.
 
 ```bash
 ./cleanup.sh
 ```
-**Note:** If you encounter errors deleting Agent Engines due to child resources, you may need to modify `cleanup.sh` to include `?force=true` in the `curl -X DELETE` command for reasoning engines.

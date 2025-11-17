@@ -16,7 +16,8 @@ import asyncio
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from shared.adk_orchestrator_agent import AdkOrchestratorAgentExecutor
 from shared.custom_context_builder import CustomCallContextBuilder
-from shared.dependencies import get_database_task_store, initialize_dependencies
+from shared.dependencies import get_database_task_store, initialize_dependencies, get_db_engine
+from shared.session_store import initialize_session_store
 import logging
 import os
 from dotenv import load_dotenv
@@ -42,15 +43,10 @@ class OrchestratorAgentExecutor(AgentExecutor):
         Args:
             agent_engine_id: Optional agent engine ID.
         """
-        self._core_executor = AdkOrchestratorAgentExecutor(
-            remote_agent_addresses=[
-                os.getenv("COCKTAIL_AGENT_URL", "http://localhost:10002"),
-                os.getenv("WEA_AGENT_URL", "http://localhost:10001"),
-            ],
-            agent_engine_id=agent_engine_id,
-        )
+        self._core_executor: AdkOrchestratorAgentExecutor | None = None
         self._task_store: TaskStore | None = None
         self._setup_lock = asyncio.Lock()
+        self._agent_engine_id = agent_engine_id
 
     async def _ensure_setup(self) -> None:
         """
@@ -64,6 +60,18 @@ class OrchestratorAgentExecutor(AgentExecutor):
                 if self._task_store is None:
                     await initialize_dependencies()
                     self._task_store = get_database_task_store()
+                    db_engine = get_db_engine()
+                    await initialize_session_store(db_engine)
+
+                    self._core_executor = AdkOrchestratorAgentExecutor(
+                        remote_agent_addresses=[
+                            os.getenv("COCKTAIL_AGENT_URL", "http://localhost:10002"),
+                            os.getenv("WEA_AGENT_URL", "http://localhost:10001"),
+                        ],
+                        agent_engine_id=self._agent_engine_id,
+                        db_engine=db_engine,
+                    )
+
 
     async def execute(
         self,
@@ -90,10 +98,17 @@ class OrchestratorAgentExecutor(AgentExecutor):
                 message.task_id = None
 
         # Delegate the execution to the core agent logic.
-        await self._core_executor.execute(context, event_queue)
+        if self._core_executor:
+            await self._core_executor.execute(context, event_queue)
+        else:
+            raise RuntimeError("Core executor not initialized.")
+
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """
         Handles a cancellation request by delegating to the core executor.
         """
-        await self._core_executor.cancel(context, event_queue)
+        if self._core_executor:
+            await self._core_executor.cancel(context, event_queue)
+        else:
+            raise RuntimeError("Core executor not initialized.")
