@@ -214,7 +214,7 @@ echo "Storing credentials in Secret Manager..."
 
 # Function to create or update a secret
 create_or_update_secret() {
-  local secret_id=
+  local secret_id=$1
   local data=$2
   if gcloud secrets describe "$secret_id" --project="$PROJECT_ID" &>/dev/null; then
     echo "Secret '$secret_id' exists. Adding new version."
