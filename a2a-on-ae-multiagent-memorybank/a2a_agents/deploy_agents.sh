@@ -21,7 +21,6 @@ set -a
 source "$PROJECT_ROOT/.env"
 set +a
 
-
 # Deploy specialized agents sequentially to avoid race conditions
 echo "Deploying Cocktail Agent..."
 python -m specialized_agents.cocktail_agent.deploy_cocktail_agent
@@ -84,6 +83,12 @@ echo "Granting Cloud Run Invoker role to Agent Engine Service Agent..."
 gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
     --member="serviceAccount:$AE_SERVICE_AGENT" \
     --role="roles/run.invoker" \
+    --condition=None
+
+echo "Granting Service Usage Consumer role to Agent Engine Service Agent (for logging)..."
+gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+    --member="serviceAccount:$AE_SERVICE_AGENT" \
+    --role="roles/serviceusage.serviceUsageConsumer" \
     --condition=None
 
 echo "All IAM roles are set."
