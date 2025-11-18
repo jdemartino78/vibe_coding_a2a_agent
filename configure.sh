@@ -29,11 +29,13 @@ cp .env.example .env
 prompt_for_input "Enter your Google Cloud Project ID: " PROJECT_ID
 prompt_for_input "Enter your Google Cloud Project Number: " PROJECT_NUMBER
 prompt_for_input "Enter your unique Google Cloud Storage Bucket Name: " BUCKET_NAME
+prompt_for_input "Enter a user ID for the application (e.g., your email or a unique nickname): " USER_ID
 
 # Substitute placeholders in the new .env file
 sed -i "s/your-project-id/$PROJECT_ID/g" .env
 sed -i "s/your-project-number/$PROJECT_NUMBER/g" .env
 sed -i "s/your-unique-bucket-name/$BUCKET_NAME/g" .env
+sed -i "s/your-user-id/$USER_ID/g" .env
 
 echo ""
 echo "✅ Configuration complete."
