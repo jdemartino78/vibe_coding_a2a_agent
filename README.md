@@ -98,11 +98,27 @@ This script will also save the agent URLs and Engine IDs in the root `.env` file
 
 ### 5. Run the Frontend
 
-Run the Gradio frontend locally to interact with your agent system. The script will install dependencies and start the web server.
+You have two options for running the user-facing web interface: running it locally for quick testing, or deploying it to Google Cloud Run for a more permanent and shareable URL.
+
+#### Option 5a: Run Locally
+
+This is the fastest way to start interacting with your agent. The script will install dependencies and start the Gradio web server on your local machine.
 
 ```bash
 (cd a2a-on-ae-multiagent-memorybank/frontend_option1 && uv venv && source .venv/bin/activate && uv sync --python 3.12 && ./deploy_frontend.sh --mode local)
 ```
+
+After it starts, open your web browser to `http://127.0.0.1:8080`.
+
+#### Option 5b: Deploy to Cloud Run
+
+This option packages the frontend into a container and deploys it as a secure, scalable web service on Google Cloud.
+
+```bash
+(cd a2a-on-ae-multiagent-memorybank/frontend_option1 && uv venv && source .venv/bin/activate && uv sync --python 3.12 && ./deploy_frontend.sh --mode cloudrun)
+```
+
+The script will output the URL for your new Cloud Run service.
 
 ### 6. Test the System
 
