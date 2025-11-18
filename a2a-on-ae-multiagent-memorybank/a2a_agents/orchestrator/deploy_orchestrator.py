@@ -188,6 +188,12 @@ if not orchestrator_agent_engine_id:
     set_key(DOTENV_PATH, "ORCHESTRATOR_AGENT_ENGINE_ID", orchestrator_agent_engine_id)
     logger.info(f"Newly created ORCHESTRATOR_AGENT_ENGINE_ID: {orchestrator_agent_engine_id}")
 
+    a2a_agent = A2aAgent(
+        agent_card=orchestrator_card,
+        agent_executor_builder=OrchestratorAgentExecutor,
+        agent_executor_kwargs={"agent_engine_id": orchestrator_agent_engine_id},
+)
+
 else:
     logger.info(f"Using existing ORCHESTRATOR_AGENT_ENGINE_ID: {orchestrator_agent_engine_id}")
     agent_engine_resource_name = (
