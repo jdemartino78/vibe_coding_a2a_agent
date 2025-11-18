@@ -22,17 +22,17 @@ source "$PROJECT_ROOT/.env"
 set +a
 
 
-# # Deploy specialized agents sequentially to avoid race conditions
-# echo "Deploying Cocktail Agent..."
-# python -m specialized_agents.cocktail_agent.deploy_cocktail_agent
+# Deploy specialized agents sequentially to avoid race conditions
+echo "Deploying Cocktail Agent..."
+python -m specialized_agents.cocktail_agent.deploy_cocktail_agent
 
-# echo "Deploying Weather Agent..."
-# python -m specialized_agents.weather_agent.deploy_weather_agent
+echo "Deploying Weather Agent..."
+python -m specialized_agents.weather_agent.deploy_weather_agent
 
-# # Re-source the environment file to pick up the newly created agent URLs
-# set -a
-# source "$PROJECT_ROOT/.env"
-# set +a
+# Re-source the environment file to pick up the newly created agent URLs
+set -a
+source "$PROJECT_ROOT/.env"
+set +a
 
 echo "Deploying Orchestrator Agent..."
 python -m orchestrator.deploy_orchestrator

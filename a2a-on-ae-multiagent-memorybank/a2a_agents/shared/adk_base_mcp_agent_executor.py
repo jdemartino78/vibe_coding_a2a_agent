@@ -171,7 +171,16 @@ class PersistentVertexAiMemoryBankService(VertexAiMemoryBankService):
         logging.info(f"Events for memory bank: {events_for_memory_bank}")
 
         # *** ADD THE SCOPE EXPLICITLY ***
-        memory_scope = {"app_name": session.app_name, "user_id": session.user_id}
+        # Ensure session.app_name is a string. It should be self.runner.app_name
+        # or similar from where this is called. Assuming session object has app_name.
+        if not session.app_name:
+             logging.warning(f"session.app_name is not set for session {session.id}")
+             # Fallback or raise error - for this fix, I'll use the runner's app_name
+             app_name = self.runner.app_name
+        else:
+             app_name = session.app_name
+
+        memory_scope = {"app_name": app_name, "user_id": session.user_id}
         logging.info(f"Using scope for memory generation: {memory_scope}")
 
         operation = client.agent_engines.memories.generate(
@@ -222,7 +231,7 @@ class PersistentVertexAiMemoryBankService(VertexAiMemoryBankService):
                 logging.debug(f"Processing raw retrieved memory: {retrieved_memory}")
                 if hasattr(retrieved_memory, 'memory') and hasattr(retrieved_memory.memory, 'fact'):
                     memory_entries.append(
-                        adk.memory.MemoryEntry(
+                        adk.memory.memory_entry.MemoryEntry(
                             author="user",  # Or appropriate author
                             content=types.Content(
                                 parts=[types.Part(text=retrieved_memory.memory.fact)],
