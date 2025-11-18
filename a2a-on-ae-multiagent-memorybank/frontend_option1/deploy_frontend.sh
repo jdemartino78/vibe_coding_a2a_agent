@@ -85,13 +85,14 @@ case "$DEPLOY_MODE" in
         echo "Cloud Run Service Name: $FRONTEND_SERVICE_NAME"
 
         echo "Deploying frontend service to Cloud Run..."
+        cp ../../.env .
         gcloud run deploy "$FRONTEND_SERVICE_NAME" \
           --source . \
           --region "$GOOGLE_CLOUD_LOCATION" \
           --project "$GOOGLE_CLOUD_PROJECT" \
           --memory 2G \
           --no-allow-unauthenticated \
-          --update-env-vars=PROJECT_ID="$GOOGLE_CLOUD_PROJECT",ORCHESTRATOR_AGENT_ENGINE_ID="$ORCHESTRATOR_AGENT_ENGINE_ID",PROJECT_NUMBER="$PROJECT_NUMBER"
+          --update-env-vars=PROJECT_ID="$GOOGLE_CLOUD_PROJECT",ORCHESTRATOR_AGENT_ENGINE_ID="$ORCHESTRATOR_AGENT_ENGINE_ID",PROJECT_NUMBER="$PROJECT_NUMBER",USER_ID="$USER_ID",GRADIO_TEMP_DIR="/tmp/gradio_files"
 
         if [ $? -eq 0 ]; then
             echo "Frontend service deployed successfully to Cloud Run."

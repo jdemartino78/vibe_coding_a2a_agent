@@ -181,6 +181,42 @@ class PersistentVertexAiMemoryBankService(VertexAiMemoryBankService):
         )
         logging.info(f"Memory generation operation: {operation.name}")
 
+    async def search_memory(
+        self, *, app_name: str, user_id: str, query: str
+    ) -> adk.memory.base_memory_service.SearchMemoryResponse:
+        """Overrides the base search_memory to use the persistent client."""
+        if not self._agent_engine_id:
+            raise ValueError("Agent Engine ID is required for Memory Bank.")
+
+        client = self._get_api_client()
+        agent_engine_name = (
+            f"projects/{self._project}/locations/{self._location}/"
+            f"reasoningEngines/{self._agent_engine_id}"
+        )
+
+        retrieved_memories_iterator = client.agent_engines.memories.retrieve(
+            name=agent_engine_name,
+            scope={"app_name": app_name, "user_id": user_id},
+            similarity_search_params={"search_query": query},
+        )
+
+        logging.info("Search memory response received.")
+
+        memory_entries = []
+        for retrieved_memory in retrieved_memories_iterator:
+            logging.debug(f"Retrieved memory: {retrieved_memory}")
+            memory_entries.append(
+                adk.memory.MemoryEntry(
+                    author="user",  # Or appropriate author
+                    content=types.Content(
+                        parts=[types.Part(text=retrieved_memory.memory.fact)],
+                        role="user",
+                    ),
+                    timestamp=retrieved_memory.memory.update_time.isoformat(),
+                )
+            )
+        return adk.memory.SearchMemoryResponse(memories=memory_entries)
+
 
 class TokenManager:
     """Manages OIDC token with automatic refresh on expiry."""

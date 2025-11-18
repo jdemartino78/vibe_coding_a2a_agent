@@ -16,7 +16,7 @@ import logging
 import os
 import re
 from abc import ABC
-from typing import NoReturn
+from typing import NoReturn, Optional
 
 # A2A Imports
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -30,12 +30,16 @@ from dotenv import load_dotenv
 # ADK Imports
 from google.adk import Runner
 from google.adk.agents import LlmAgent
+from google.adk.agents.callback_context import CallbackContext
 from google.adk.artifacts import InMemoryArtifactService
 from google.adk.sessions import VertexAiSessionService
 from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 from google.genai import types as genai_types
 import vertexai
 from sqlalchemy.ext.asyncio import AsyncEngine
+from vertexai.preview.reasoning_engines.templates.adk import (
+    _default_instrumentor_builder,
+)
 
 # Custom Imports
 from shared.a2a_tools import delegate_to_specialist_agent, user_id_context
@@ -45,6 +49,39 @@ from shared.session_store import get_session_mapping, set_session_mapping
 # Set logging
 logging.getLogger().setLevel(logging.INFO)
 load_dotenv()
+
+
+async def auto_save_session_to_memory_callback(callback_context: CallbackContext):
+    """
+    Callback to save conversation session to Vertex AI Memory Bank.
+    """
+    session = callback_context._invocation_context.session
+    memory_service = callback_context._invocation_context.memory_service
+
+    logging.info(
+        f"Saving session {session.id} to memory bank for user_id={session.user_id}"
+    )
+
+    try:
+        await memory_service.add_session_to_memory(session)
+        logging.info(f"Memory generation completed for session {session.id}")
+    except Exception as e:
+        logging.error(
+            f"Memory generation failed for session {session.id}: {e}",
+            exc_info=True,
+        )
+
+
+def _telemetry_enabled() -> Optional[bool]:
+    """Return status of telemetry enablement depending on enablement env variable."""
+    env_value = os.getenv(
+        "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY", "unspecified"
+    ).lower()
+    if env_value in ("true", "1"):
+        return True
+    if env_value in ("false", "0"):
+        return False
+    return None
 
 
 # --- 1. PROMPT DEFINITION (The Core Planner Logic) ---
@@ -69,7 +106,7 @@ You are a master orchestrator agent. Your purpose is to fulfill user requests by
 
 **MEMORY:**
 - This is a multi-turn conversation. It is VERY IMPORTANT that you remember previous parts of the conversation.
-- Relevant memories from the conversation have been pre-loaded. Use these memories to help answer the user's request.
+- Relevant memories from past conversations have been pre-loaded into the context. Use this information to help answer the user's request.
 - Use your memory to recall context from the conversation to answer questions.
 
 **LOCATION NORMALIZATION:**
@@ -113,6 +150,12 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
                 "Both PROJECT_ID and LOCATION must be set as environment variables."
             )
 
+        _default_instrumentor_builder(
+            project_id=self.project_id,
+            enable_tracing=_telemetry_enabled(),
+            enable_logging=_telemetry_enabled(),
+        )
+
         self._init_agent()
 
 
@@ -129,7 +172,9 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
                     PreloadMemoryTool(),
                 ], # ADK implicitly wraps these functions
                 name="orchestrator_agent",
-                description="The central routing agent for multi-step tasks."
+                description="The central routing agent for multi-step tasks.",
+                before_model_callback=self.before_model_callback,
+                after_agent_callback=auto_save_session_to_memory_callback,
             )
 
             my_memory_service = PersistentVertexAiMemoryBankService(
@@ -150,7 +195,13 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
                 session_service=my_session_service,
                 memory_service=my_memory_service,
             )
-        
+
+    def before_model_callback(self, callback_context, llm_request):
+        """Logs memories preloaded into the LLM request context."""
+        if hasattr(llm_request, "context") and hasattr(llm_request.context, "related_data"):
+            for data in llm_request.context.related_data:
+                if data.source and data.source.startswith("memory_bank"):
+                    logging.info(f"Preloaded Memory: {data.content.parts[0].text}")
 
     async def execute(
         self,
