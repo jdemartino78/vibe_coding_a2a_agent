@@ -52,7 +52,18 @@ echo "Enabling required Google Cloud APIs..."
 gcloud services enable \
   alloydb.googleapis.com \
   secretmanager.googleapis.com \
-  servicenetworking.googleapis.com
+  servicenetworking.googleapis.com \
+  compute.googleapis.com
+
+# 1.5. Ensure the default VPC network exists
+echo "Checking for the 'default' VPC network..."
+if ! gcloud compute networks describe "$NETWORK" --project="$PROJECT_ID" &>/dev/null; then
+  echo "The 'default' network was not found. Creating it now..."
+  gcloud compute networks create default --subnet-mode=auto --project="$PROJECT_ID"
+  echo "'default' network created successfully."
+else
+  echo "'default' network already exists."
+fi
 
 # 2. Configure Private Services Access
 # This is required for AlloyDB to connect to your VPC network.
@@ -203,7 +214,7 @@ echo "Storing credentials in Secret Manager..."
 
 # Function to create or update a secret
 create_or_update_secret() {
-  local secret_id=$1
+  local secret_id=
   local data=$2
   if gcloud secrets describe "$secret_id" --project="$PROJECT_ID" &>/dev/null; then
     echo "Secret '$secret_id' exists. Adding new version."

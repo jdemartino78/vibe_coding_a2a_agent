@@ -43,6 +43,24 @@ gcloud auth login
 gcloud auth application-default login
 ```
 
+### Enable Necessary APIs
+
+Ensure all required Google Cloud APIs are enabled for the project.
+```bash
+gcloud services enable \
+    run.googleapis.com \
+    aiplatform.googleapis.com \
+    cloudbuild.googleapis.com \
+    artifactregistry.googleapis.com \
+    iam.googleapis.com \
+    cloudresourcemanager.googleapis.com \
+    storage.googleapis.com \
+    alloydb.googleapis.com \
+    secretmanager.googleapis.com \
+    servicenetworking.googleapis.com \
+    compute.googleapis.com
+```
+
 ### 1. Environment Setup
 
 Run the configuration script. It will prompt you for your Project ID, Project Number, and a unique GCS Bucket Name. This creates a central `.env` file with all necessary environment variables.
@@ -68,11 +86,13 @@ Deploy the two backend tools (Cocktail and Weather APIs) that your specialized a
 
 ### 4. Deploy A2A Agents
 
-This step deploys the Orchestrator, Cocktail, and Weather agents to Vertex AI Agent Engine. The deployment script will also automatically grant all necessary IAM permissions.
+This step deploys the Orchestrator, Cocktail, and Weather agents to Vertex AI Agent Engine. The `Orchestrator` agent intelligently delegates tasks to the specialized `Weather` and `Cocktail` agents. It discovers them by reading their Agent Card, which is like a 'business card' that describes what an agent can do. The deployment script will also automatically grant all necessary IAM permissions.
 
+Run the following command to set up the virtual environment, install dependencies, and deploy all three agents:
 ```bash
 (cd a2a-on-ae-multiagent-memorybank/a2a_agents && uv venv && source .venv/bin/activate && uv sync --python 3.12 && ./deploy_agents.sh)
 ```
+This script will also save the agent URLs and Engine IDs in the root `.env` file.
 
 
 
