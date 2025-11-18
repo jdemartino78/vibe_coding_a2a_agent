@@ -6,7 +6,7 @@
 
 set -e
 
-# Determine the project root directory.
+#Determine the project root directory.
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$SCRIPT_DIR/../.."
 
@@ -45,7 +45,7 @@ echo "Ensuring necessary IAM roles for Agent Engine and its service account..."
 PROJECT_NUMBER=$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" --format="value(projectNumber)")
 
 # Construct the default compute service account email (for the agent's code)
-AGENT_SERVICE_ACCOUNT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+#AGENT_SERVICE_ACCOUNT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 
 # Construct the Agent Engine Service Agent email (for the Agent Engine itself)
 AE_SERVICE_AGENT="service-${PROJECT_NUMBER}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
@@ -53,22 +53,28 @@ AE_SERVICE_AGENT="service-${PROJECT_NUMBER}@gcp-sa-aiplatform-re.iam.gserviceacc
 echo "Target Agent Service Account: $AGENT_SERVICE_ACCOUNT"
 echo "Target Agent Engine Service Agent: $AE_SERVICE_AGENT"
 
-# Grant necessary roles to the AGENT_SERVICE_ACCOUNT. The commands are idempotent.
+# Grant necessary roles to the AE_SERVICE_AGENT. The commands are idempotent.
 echo "Granting Secret Manager Secret Accessor role to agent service account..."
 gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
-    --member="serviceAccount:$AGENT_SERVICE_ACCOUNT" \
+    --member="serviceAccount:$AE_SERVICE_AGENT" \
     --role="roles/secretmanager.secretAccessor" \
+    --condition=None
+
+echo "Granting Secret Manager Secret Accessor role to agent service account..."
+gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+    --member="serviceAccount:$AE_SERVICE_AGENT" \
+    --role="roles/serviceusage.serviceUsageConsumer" \
     --condition=None
 
 echo "Granting Cloud AlloyDB Client role to agent service account..."
 gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
-    --member="serviceAccount:$AGENT_SERVICE_ACCOUNT" \
+    --member="serviceAccount:$AE_SERVICE_AGENT" \
     --role="roles/alloydb.client" \
     --condition=None
 
 echo "Granting Vertex AI User role to agent service account..."
 gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
-    --member="serviceAccount:$AGENT_SERVICE_ACCOUNT" \
+    --member="serviceAccount:$AE_SERVICE_AGENT" \
     --role="roles/aiplatform.user" \
     --condition=None
 
