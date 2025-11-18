@@ -54,7 +54,7 @@ done
 # --- Delete Vertex AI Agent Engines ---
 echo "
 --- Deleting Vertex AI Agent Engines ---"
-AGENT_IDS=("$COCKTAIL_AGENT_ENGINE_ID" "$WEATHER_AGENT_ENGINE_ID" "$HOSTING_AGENT_ENGINE_ID")
+AGENT_IDS=("$COCKTAIL_AGENT_ENGINE_ID" "$WEATHER_AGENT_ENGINE_ID" "$ORCHESTRATOR_AGENT_ENGINE_ID")
 for AGENT_ID in "${AGENT_IDS[@]}"; do
     if [ ! -z "$AGENT_ID" ]; then
         TOKEN=$(gcloud auth print-access-token)
