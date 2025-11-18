@@ -33,6 +33,7 @@ from google.auth import default
 from google.auth.credentials import Credentials
 from google.auth.transport.requests import Request as AuthRequest
 from google.genai import types as genai_types  # Aliased to avoid conflict
+import json
 
 # Configure logging
 logging.basicConfig(
@@ -139,11 +140,15 @@ async def get_response_from_agent(
         logger.info("Fetching agent card...")
         remote_a2a_agent_card = await get_agent_card(remote_a2a_agent_resource_name)
         logger.info("Agent card fetched successfully")
+        agent_card_json = json.loads(remote_a2a_agent_card.json())
+        agent_name = agent_card_json["name"]
+        logger.info(f"Agent card for {agent_name} fetched successfully") 
 
         httpx_client = httpx.AsyncClient(
             timeout=120,
             auth=GoogleAuth(),
         )
+
 
         factory = ClientFactory(
             ClientConfig(
@@ -168,7 +173,7 @@ async def get_response_from_agent(
 
         message = Message(**message_payload)
 
-        logger.info(f"Sending message to agent: {query}")
+        logger.info(f"Sending message to agent {agent_name}: {query}")
         response_stream = a2a_client.send_message(message)
 
         final_result_text = None
