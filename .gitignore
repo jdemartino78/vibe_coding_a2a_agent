@@ -297,6 +297,7 @@ cython_debug/
 
 # Ignore scratch
 scratch
+.geminiignore
 
 # Ignore Terraform runtime artifacts
 *.tfstate

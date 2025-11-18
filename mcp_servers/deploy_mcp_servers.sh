@@ -18,6 +18,43 @@ else
     exit 1
 fi
 
+# --- IAM Permission Setup for MCP Server Deployment ---
+echo "--- Ensuring necessary IAM roles for MCP Server deployment ---"
+
+# Get the project number from the project ID
+PROJECT_NUMBER=$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" --format="value(projectNumber)")
+
+# Construct the default compute service account email
+SERVICE_ACCOUNT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+echo "Target Service Account for MCP Deployment: $SERVICE_ACCOUNT"
+
+# Grant roles necessary for building, pushing, and deploying Cloud Run services.
+# These commands are idempotent.
+gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+    --member="serviceAccount:$SERVICE_ACCOUNT" \
+    --role="roles/artifactregistry.writer" \
+    --condition=None
+
+gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+    --member="serviceAccount:$SERVICE_ACCOUNT" \
+    --role="roles/run.admin" \
+    --condition=None
+
+gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+    --member="serviceAccount:$SERVICE_ACCOUNT" \
+    --role="roles/storage.objectAdmin" \
+    --condition=None # For Cloud Build artifacts
+
+gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+    --member="serviceAccount:$SERVICE_ACCOUNT" \
+    --role="roles/iam.serviceAccountUser" \
+    --condition=None # To allow acting as the runtime service account
+
+echo "--- IAM roles for MCP deployment are set ---"
+# --- End of IAM Setup ---
+
+
 # --- Function to deploy a service in the background ---
 deploy_service() {
     local SERVICE_NAME=$1

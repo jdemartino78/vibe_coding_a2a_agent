@@ -71,28 +71,17 @@ Deploy the two backend tools (Cocktail and Weather APIs) that your specialized a
 This step deploys the Orchestrator, Cocktail, and Weather agents to Vertex AI Agent Engine. The deployment script will also automatically grant all necessary IAM permissions.
 
 ```bash
-./a2a-on-ae-multiagent-memorybank/a2a_agents/deploy_agents.sh
+(cd a2a-on-ae-multiagent-memorybank/a2a_agents && uv venv && source .venv/bin/activate && uv sync --python 3.12 && ./deploy_agents.sh)
 ```
 
-#### A Note on IAM Permissions
-For your reference, the deployment script automatically grants the following roles. You do not need to run these commands manually.
 
-*   **Agent Engine Service Agent (`service-...@gcp-sa-aiplatform-re.iam.gserviceaccount.com`):**
-    *   `roles/run.invoker`: To invoke the specialized agents on Cloud Run.
-
-*   **Compute Engine Service Account (`...-compute@developer.gserviceaccount.com`):**
-    *   `roles/aiplatform.user`: To interact with Vertex AI services.
-    *   `roles/run.invoker`: To invoke other services.
-    *   `roles/artifactregistry.writer`: To push container images.
-    *   `roles/alloydb.client`: To connect to the AlloyDB database.
-    *   `roles/secretmanager.secretAccessor`: To read database credentials from Secret Manager.
 
 ### 5. Run the Frontend
 
 Run the Gradio frontend locally to interact with your agent system. The script will install dependencies and start the web server.
 
 ```bash
-./a2a-on-ae-multiagent-memorybank/frontend_option1/deploy_frontend.sh --mode local
+(cd a2a-on-ae-multiagent-memorybank/frontend_option1 && uv venv && source .venv/bin/activate && uv sync --python 3.12 && ./deploy_frontend.sh --mode local)
 ```
 
 ### 6. Test the System

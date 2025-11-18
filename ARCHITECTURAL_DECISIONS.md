@@ -40,6 +40,61 @@ The code within `a2a-on-ae-multiagent-memorybank/a2a_agents/` is organized by fu
 
 The `OrchestratorAgentExecutor` (the Shell) holds an instance of `AdkOrchestratorAgentExecutor` (the Brain). This allows the Brain's complex reasoning to be unit-tested in isolation, without needing to mock a database connection.
 
+### Distinguishing Between Messages and Artifacts
+
+A key concept in the A2A protocol is the difference between a `Message` and an `Artifact`. The system uses both, but for distinct purposes:
+
+-   **`Message`:** Used for the conversational, turn-by-turn dialogue between agents. When a specialist agent needs more information, it returns a `Message` with a clarifying question, setting the task state to `input_required`.
+
+-   **`Artifact`:** Represents the final, tangible output or "deliverable" of a completed task. It is not part of the conversation but is the result of it.
+
+This project establishes a clear convention: when a specialist agent successfully completes its task, it packages its final answer into an `Artifact` named **`"answer"`**. The orchestrator is specifically designed to look for this artifact to retrieve the result.
+
+This pattern is explicitly implemented in the `shared/a2a_tools.py` file within the `_get_final_text_from_task` helper function, which is responsible for parsing the response from a specialist agent and extracting the content from the `"answer"` artifact.
+
+### Leveraging the Official A2A Python SDK
+
+The project does not implement the A2A communication protocol from scratch. Instead, it relies on the high-level abstractions provided by the official `a2a-python` SDK. This ensures compliance with the A2A standard and simplifies the communication logic.
+
+The primary example of this is in `shared/a2a_tools.py`, which uses the following core components from the SDK:
+
+-   **`ClientFactory`**: This is the main entry point for creating A2A clients. The code creates a `SHARED_CLIENT_FACTORY` to manage connections.
+-   **`ClientConfig`**: This data structure is used to configure the behavior of the clients created by the factory.
+-   **`client.send_message(...)`**: This is the high-level method used to send a message to a specialist agent, abstracting away the underlying HTTP requests and protocol details.
+
+A key architectural choice is how authentication is handled. Rather than bypassing the SDK, the project injects a custom-configured `httpx.AsyncClient` into the SDK's `ClientConfig`:
+
+```python
+# In shared/a2a_tools.py
+
+# 1. A custom httpx client is created with Google-specific auth.
+AUTHENTICATED_HTTPX_CLIENT = httpx.AsyncClient(
+    auth=GoogleAuth(),
+    ...
+)
+
+# 2. The custom client is injected into the standard A2A SDK ClientConfig.
+SHARED_CLIENT_CONFIG = ClientConfig(
+    httpx_client=AUTHENTICATED_HTTPX_CLIENT,
+    ...
+)
+
+# 3. The config is used to create the SDK's ClientFactory.
+SHARED_CLIENT_FACTORY = ClientFactory(config=SHARED_CLIENT_CONFIG)
+```
+
+This is the intended and recommended pattern for integrating custom authentication or other advanced HTTP configurations with the `a2a-python` SDK. It allows the project to benefit from the SDK's robust protocol handling while seamlessly layering in necessary custom behavior.
+
+### Modern vs. Legacy SDK Patterns
+
+This project's use of the `a2a-python` SDK represents the modern, recommended **SDK Factory Pattern**, which stands in contrast to older, legacy patterns found in other examples.
+
+-   **Legacy Client Pattern:** This older approach involves directly instantiating a deprecated `A2AClient` and manually constructing protocol-specific request objects (like `SendMessageRequest`). This pattern is more verbose, tightly coupled to a specific transport (JSON-RPC), and relies on code that is marked for future removal from the SDK.
+
+-   **Modern Factory Pattern (This Project):** The approach used in this codebase is centered on the `ClientFactory`. It abstracts away the transport layer, allowing the SDK to negotiate the best communication protocol (JSON-RPC, gRPC, etc.) automatically. The code is cleaner, as it only needs to create a high-level `Message` object rather than the full request boilerplate.
+
+From a software engineering perspective, the modern Factory Pattern is unequivocally superior. It avoids deprecated code, promotes loose coupling, reduces boilerplate, and is significantly more maintainable and robust against future changes in the SDK. This project therefore serves as a better blueprint for building production-ready, future-proof multi-agent systems.
+
 ### Dependency Injection and Lazy Initialization
 
 The `shared/dependencies.py` module creates a single, shared connection pool to the AlloyDB database. This connection is initialized "lazily" on the first incoming request via the `OrchestratorAgentExecutor._ensure_setup` method, solving the challenge of `async` database connections in `sync` class constructors.
