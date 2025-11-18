@@ -28,7 +28,7 @@ from google import adk
 from google.adk import Runner
 from google.adk.agents import LlmAgent
 from google.adk.artifacts import InMemoryArtifactService
-from google.adk.memory import VertexAiMemoryBankService
+from google.adk.memory import VertexAiMemoryBankService, base_memory_service
 from google.adk.sessions import VertexAiSessionService
 import vertexai # Added import for vertexai
 from google.adk.tools.mcp_tool.mcp_toolset import (
@@ -169,21 +169,22 @@ class PersistentVertexAiMemoryBankService(VertexAiMemoryBankService):
         logging.info(f"Memory generation for session: {session_resource_name}")
 
         logging.info(f"Events for memory bank: {events_for_memory_bank}")
+
+        # *** ADD THE SCOPE EXPLICITLY ***
+        memory_scope = {"app_name": session.app_name, "user_id": session.user_id}
+        logging.info(f"Using scope for memory generation: {memory_scope}")
+
         operation = client.agent_engines.memories.generate(
             name=agent_engine_name,
-            vertex_session_source={
-                "session": (
-                    f"projects/{self._project}/locations/{self._location}/"
-                    f"reasoningEngines/{self._agent_engine_id}/sessions/{session.id}"
-                )
-            },
+            vertex_session_source={"session": session_resource_name},
             config={"wait_for_completion": False},
+            scope=memory_scope,  # *** PASS THE SCOPE HERE ***
         )
         logging.info(f"Memory generation operation: {operation.name}")
 
     async def search_memory(
         self, *, app_name: str, user_id: str, query: str
-    ) -> adk.memory.base_memory_service.SearchMemoryResponse:
+    ) -> base_memory_service.SearchMemoryResponse:
         """Overrides the base search_memory to use the persistent client."""
         if not self._agent_engine_id:
             raise ValueError("Agent Engine ID is required for Memory Bank.")
@@ -194,28 +195,50 @@ class PersistentVertexAiMemoryBankService(VertexAiMemoryBankService):
             f"reasoningEngines/{self._agent_engine_id}"
         )
 
-        retrieved_memories_iterator = client.agent_engines.memories.retrieve(
-            name=agent_engine_name,
-            scope={"app_name": app_name, "user_id": user_id},
-            similarity_search_params={"search_query": query},
-        )
+        scope = {"app_name": app_name, "user_id": user_id}
+        similarity_search_params = {"search_query": query}
 
-        logging.info("Search memory response received.")
+        logging.info(f"Searching memory with scope: {scope}, query: '{query}', params: {similarity_search_params}")
 
-        memory_entries = []
-        for retrieved_memory in retrieved_memories_iterator:
-            logging.debug(f"Retrieved memory: {retrieved_memory}")
-            memory_entries.append(
-                adk.memory.MemoryEntry(
-                    author="user",  # Or appropriate author
-                    content=types.Content(
-                        parts=[types.Part(text=retrieved_memory.memory.fact)],
-                        role="user",
-                    ),
-                    timestamp=retrieved_memory.memory.update_time.isoformat(),
-                )
+        try:
+            retrieved_memories_iterator = client.agent_engines.memories.retrieve(
+                name=agent_engine_name,
+                scope=scope,
+                similarity_search_params=similarity_search_params,
             )
-        return adk.memory.SearchMemoryResponse(memories=memory_entries)
+
+            logging.info("Search memory API call complete.")
+
+            # Consume iterator to log raw results
+            raw_results = list(retrieved_memories_iterator)
+
+            if not raw_results:
+                logging.warning(f"NO MEMORIES RETRIEVED for scope {scope} and query '{query}'")
+            else:
+                logging.info(f"Raw retrieved memories ({len(raw_results)}): {raw_results}")
+
+            memory_entries = []
+            for retrieved_memory in raw_results:
+                logging.debug(f"Processing raw retrieved memory: {retrieved_memory}")
+                if hasattr(retrieved_memory, 'memory') and hasattr(retrieved_memory.memory, 'fact'):
+                    memory_entries.append(
+                        adk.memory.MemoryEntry(
+                            author="user",  # Or appropriate author
+                            content=types.Content(
+                                parts=[types.Part(text=retrieved_memory.memory.fact)],
+                                role="user",
+                            ),
+                            timestamp=retrieved_memory.memory.update_time.isoformat(),
+                        )
+                    )
+                else:
+                    logging.warning(f"Retrieved memory in unexpected format: {retrieved_memory}")
+
+            return base_memory_service.SearchMemoryResponse(memories=memory_entries)
+
+        except Exception as e:
+            logging.error(f"Error during search_memory call: {e}", exc_info=True)
+            return base_memory_service.SearchMemoryResponse(memories=[])
 
 
 class TokenManager:
