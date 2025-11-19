@@ -101,6 +101,7 @@ client = vertexai.Client(
 # If not, we create a new one. This ID is crucial for managing the deployed agent.
 orchestrator_agent_engine_id = os.getenv("ORCHESTRATOR_AGENT_ENGINE_ID")
 
+# Base configuration for the Agent Engine resource
 agent_engine_config={
     "display_name": f"{orchestrator_card.name}-MemoryBank",
     "description": orchestrator_card.description,
