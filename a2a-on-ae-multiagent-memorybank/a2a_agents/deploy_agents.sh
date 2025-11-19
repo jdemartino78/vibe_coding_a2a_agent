@@ -22,33 +22,31 @@ source "$PROJECT_ROOT/.env"
 set +a
 
 # Deploy specialized agents sequentially to avoid race conditions
-# echo "Deploying Cocktail Agent..."
-# python -m specialized_agents.cocktail_agent.deploy_cocktail_agent
+echo "Deploying Cocktail Agent..."
+python -m specialized_agents.cocktail_agent.deploy_cocktail_agent
 
-# echo "Deploying Weather Agent..."
-# python -m specialized_agents.weather_agent.deploy_weather_agent
+echo "Deploying Weather Agent..."
+python -m specialized_agents.weather_agent.deploy_weather_agent
 
 # Re-source the environment file to pick up the newly created agent URLs
 set -a
 source "$PROJECT_ROOT/.env"
 set +a
 
-# echo "Deploying Orchestrator Agent..."
-# python -m orchestrator.deploy_orchestrator
+echo "Deploying Orchestrator Agent..."
+python -m orchestrator.deploy_orchestrator
 
 echo "All agents deployed."
 
 # --- IAM Permission Setup ---
+
 echo "Ensuring necessary IAM roles for Agent Engine and its service account..."
 
 # Get the project number from the project ID
 PROJECT_NUMBER=$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" --format="value(projectNumber)")
 
-# Construct the default compute service account email (for the agent's code)
-AE_SERVICE_AGENT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
-
 # Construct the Agent Engine Service Agent email (for the Agent Engine itself)
-#AE_SERVICE_AGENT="service-${PROJECT_NUMBER}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+AE_SERVICE_AGENT="service-${PROJECT_NUMBER}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
 
 #echo "Target Agent Service Account: $AGENT_SERVICE_ACCOUNT"
 echo "Target Agent Engine Service Agent: $AE_SERVICE_AGENT"
