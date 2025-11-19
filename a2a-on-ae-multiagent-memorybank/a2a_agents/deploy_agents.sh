@@ -78,6 +78,12 @@ gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
     --role="roles/aiplatform.user" \
     --condition=None
 
+echo "Granting Vertex AI User role to agent service account..."
+gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+    --member="serviceAccount:$AE_SERVICE_AGENT" \
+    --role="roles/logging.logWriter" \
+    --condition=None
+
 # Grant necessary roles to the AE_SERVICE_AGENT. The commands are idempotent.
 echo "Granting Cloud Run Invoker role to Agent Engine Service Agent..."
 gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
