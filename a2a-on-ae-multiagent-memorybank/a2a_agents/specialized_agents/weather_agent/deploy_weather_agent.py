@@ -97,45 +97,19 @@ client = vertexai.Client(
 weather_agent_engine_id = os.getenv("WEATHER_AGENT_ENGINE_ID")
 remote_a2a_agent = None
 
-# --- Define the A2A Agent for Deployment ---
-# The A2aAgent class wraps our agent's logic (card and executor) for deployment
-# to Agent Engine.
-a2a_agent = A2aAgent(
-    agent_card=weather_agent_card,
-    agent_executor_builder=WeatherAgentExecutor,
-    agent_executor_kwargs={"agent_engine_id": weather_agent_engine_id},
-)
-
-config = {
-    "display_name": f"{a2a_agent.agent_card.name}-MemoryBank",
-    "description": a2a_agent.agent_card.description,
-    "service_account": f"{PROJECT_NUMBER}-compute@developer.gserviceaccount.com",
-    "requirements": [
-        "google-cloud-aiplatform[agent_engines,adk]>=1.112.0",
-        "a2a-sdk >= 0.3.4",
-        "pydantic==2.11.9",
-        "cloudpickle==3.1.1",
-        "google-auth-oauthlib>=1.2.2",
-        "google-auth[openid]>=2.40.3",
-        "google-genai>=1.36.0",
-    ],
+# Base configuration for the Agent Engine resource
+agent_engine_config={
+    "display_name": f"{weather_agent_card.name}-MemoryBank",
+    "description": weather_agent_card.description,
     "http_options": {
         "base_url": f"https://{LOCATION}-aiplatform.googleapis.com",
         "api_version": "v1beta1",
     },
     "staging_bucket": BUCKET_URI,
-    "env_vars": {
-        "WEA_MCP_SERVER_URL": WEA_MCP_SERVER_URL,
-        "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY": "true",
-        "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT": "true",
-        "PROJECT_ID": PROJECT_ID,
-        "LOCATION": LOCATION,
-    },
-    "extra_packages": ["specialized_agents/weather_agent", "shared"]
 }
 
 if not weather_agent_engine_id:
-    logger.info("WEATHER_AGENT_ENGINE_ID not found. Creating a new Agent Engine.")
+    logger.info("WEATHER_AGENT_ENGINE_ID not found. Creating a new Agent Engine resource.")
     
     weather_memory_config = {
         "memory_topics": [
@@ -148,7 +122,8 @@ if not weather_agent_engine_id:
         ],
     }
     
-    config["context_spec"] = {
+    creation_config = agent_engine_config.copy()
+    creation_config["context_spec"] = {
         "memory_bank_config": {
             "generation_config": {
                 "model": f"projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/gemini-2.5-flash"
@@ -157,22 +132,52 @@ if not weather_agent_engine_id:
         }
     }
     
-    remote_a2a_agent = client.agent_engines.create(agent=a2a_agent, config=config)
-    weather_agent_engine_id = remote_a2a_agent.api_resource.name.split('/')[-1]
+    # Create the resource without the agent code
+    agent_engine_resource = client.agent_engines.create(config=creation_config)
+    weather_agent_engine_id = agent_engine_resource.api_resource.name.split('/')[-1]
     set_key(DOTENV_PATH, "WEATHER_AGENT_ENGINE_ID", weather_agent_engine_id)
     logger.info(f"Newly created WEATHER_AGENT_ENGINE_ID: {weather_agent_engine_id}")
 
-else:
-    logger.info(f"Using existing WEATHER_AGENT_ENGINE_ID: {weather_agent_engine_id}")
-    agent_engine_resource_name = (
-        f"projects/{PROJECT_NUMBER}/locations/{LOCATION}/reasoningEngines/{weather_agent_engine_id}"
-    )
-    logger.info(f"Attempting to deploy Weather Agent to Agent Engine: {agent_engine_resource_name}")
-    remote_a2a_agent = client.agent_engines.update(
-        name=agent_engine_resource_name,
-        agent=a2a_agent,
-        config=config,
-    )
+# --- Now, with a valid ID, define the A2A Agent and deploy the code ---
+logger.info(f"Using WEATHER_AGENT_ENGINE_ID: {weather_agent_engine_id}")
+
+a2a_agent = A2aAgent(
+    agent_card=weather_agent_card,
+    agent_executor_builder=WeatherAgentExecutor,
+    agent_executor_kwargs={"agent_engine_id": weather_agent_engine_id},
+)
+
+# Configuration for deploying the agent code
+agent_code_config = agent_engine_config.copy()
+agent_code_config.update({
+    "requirements": [
+        "google-cloud-aiplatform[agent_engines,adk]>=1.112.0",
+        "a2a-sdk >= 0.3.4",
+        "pydantic==2.11.9",
+        "cloudpickle==3.1.1",
+        "google-auth-oauthlib>=1.2.2",
+        "google-auth[openid]>=2.40.3",
+        "google-genai>=1.36.0",
+    ],
+    "env_vars": {
+        "WEA_MCP_SERVER_URL": WEA_MCP_SERVER_URL,
+        "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY": "true",
+        "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT": "true",
+        "PROJECT_ID": PROJECT_ID,
+        "LOCATION": LOCATION,
+    },
+    "extra_packages": ["specialized_agents/weather_agent", "shared"]
+})
+
+agent_engine_resource_name = (
+    f"projects/{PROJECT_NUMBER}/locations/{LOCATION}/reasoningEngines/{weather_agent_engine_id}"
+)
+logger.info(f"Attempting to deploy Weather Agent to Agent Engine: {agent_engine_resource_name}")
+remote_a2a_agent = client.agent_engines.update(
+    name=agent_engine_resource_name,
+    agent=a2a_agent,
+    config=agent_code_config,
+)
 
 # Retrieve the deployed AgentEngine object to access its agent_card
 remote_a2a_agent_retrieved = client.agent_engines.get(

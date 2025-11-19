@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # This script deletes all the resources created during the training session.
 
@@ -56,23 +57,13 @@ echo "
 --- Deleting Vertex AI Agent Engines ---"
 AGENT_IDS=("$COCKTAIL_AGENT_ENGINE_ID" "$WEATHER_AGENT_ENGINE_ID" "$ORCHESTRATOR_AGENT_ENGINE_ID")
 for AGENT_ID in "${AGENT_IDS[@]}"; do
-    if [ ! -z "$AGENT_ID" ]; then
-        TOKEN=$(gcloud auth print-access-token)
-        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET \
-            -H "Authorization: Bearer $TOKEN" \
-            "https://aiplatform.googleapis.com/v1beta1/projects/$GOOGLE_CLOUD_PROJECT/locations/$GOOGLE_CLOUD_LOCATION/reasoningEngines/$AGENT_ID")
-
-        if [ "$HTTP_STATUS" -eq 200 ]; then
-            echo "Deleting Agent Engine: $AGENT_ID..."
-            curl -s -X DELETE \
-                -H "Authorization: Bearer $TOKEN" \
-                "https://aiplatform.googleapis.com/v1beta1/projects/$GOOGLE_CLOUD_PROJECT/locations/$GOOGLE_CLOUD_LOCATION/reasoningEngines/$AGENT_ID?force=true"
-            echo "Agent Engine: $AGENT_ID deleted."
-        elif [ "$HTTP_STATUS" -eq 404 ]; then
-            echo "Agent Engine: $AGENT_ID not found, skipping."
-        else
-            echo "Error checking Agent Engine: $AGENT_ID. HTTP Status: $HTTP_STATUS"
-        fi
+    if [ -n "$AGENT_ID" ]; then
+        echo "Deleting Agent Engine: $AGENT_ID..."
+        gcloud alpha ai reasoning-engines delete "$AGENT_ID" \
+            --project="$GOOGLE_CLOUD_PROJECT" \
+            --location="$GOOGLE_CLOUD_LOCATION" \
+            --force \
+            --quiet || echo "Agent Engine $AGENT_ID not found or already deleted."
     else
         echo "Agent Engine ID not set, skipping."
     fi

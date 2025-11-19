@@ -97,45 +97,19 @@ client = vertexai.Client(
 cocktail_agent_engine_id = os.getenv("COCKTAIL_AGENT_ENGINE_ID")
 remote_a2a_agent = None
 
-# --- Define the A2A Agent for Deployment ---
-# The A2aAgent class wraps our agent's logic (card and executor) for deployment
-# to Agent Engine.
-a2a_agent = A2aAgent(
-    agent_card=cocktail_agent_card,
-    agent_executor_builder=CocktailAgentExecutor,
-    agent_executor_kwargs={"agent_engine_id": cocktail_agent_engine_id},
-)
-
-config = {
-    "display_name": f"{a2a_agent.agent_card.name}-MemoryBank",
-    "description": a2a_agent.agent_card.description,
-    "service_account": f"{PROJECT_NUMBER}-compute@developer.gserviceaccount.com",
-    "requirements": [
-        "google-cloud-aiplatform[agent_engines,adk]>=1.112.0",
-        "a2a-sdk >= 0.3.4",
-        "pydantic==2.11.9",
-        "cloudpickle==3.1.1",
-        "google-auth-oauthlib>=1.2.2",
-        "google-auth[openid]>=2.40.3",
-        "google-genai>=1.36.0",
-    ],
+# Base configuration for the Agent Engine resource
+agent_engine_config={
+    "display_name": f"{cocktail_agent_card.name}-MemoryBank",
+    "description": cocktail_agent_card.description,
     "http_options": {
         "base_url": f"https://{LOCATION}-aiplatform.googleapis.com",
         "api_version": "v1beta1",
     },
     "staging_bucket": BUCKET_URI,
-    "env_vars": {
-        "CT_MCP_SERVER_URL": CT_MCP_SERVER_URL,
-        "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY": "true",
-        "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT": "true",
-        "PROJECT_ID": PROJECT_ID,
-        "LOCATION": LOCATION,
-    },
-    "extra_packages": ["specialized_agents/cocktail_agent", "shared"]
 }
 
 if not cocktail_agent_engine_id:
-    logger.info("COCKTAIL_AGENT_ENGINE_ID not found. Creating a new Agent Engine.")
+    logger.info("COCKTAIL_AGENT_ENGINE_ID not found. Creating a new Agent Engine resource.")
     
     cocktail_memory_config = {
         "memory_topics": [
@@ -149,7 +123,8 @@ if not cocktail_agent_engine_id:
         ],
     }
     
-    config["context_spec"] = {
+    creation_config = agent_engine_config.copy()
+    creation_config["context_spec"] = {
         "memory_bank_config": {
             "generation_config": {
                 "model": f"projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/gemini-2.5-flash"
@@ -158,22 +133,52 @@ if not cocktail_agent_engine_id:
         }
     }
     
-    remote_a2a_agent = client.agent_engines.create(agent=a2a_agent, config=config)
-    cocktail_agent_engine_id = remote_a2a_agent.api_resource.name.split('/')[-1]
+    # Create the resource without the agent code
+    agent_engine_resource = client.agent_engines.create(config=creation_config)
+    cocktail_agent_engine_id = agent_engine_resource.api_resource.name.split('/')[-1]
     set_key(DOTENV_PATH, "COCKTAIL_AGENT_ENGINE_ID", cocktail_agent_engine_id)
     logger.info(f"Newly created COCKTAIL_AGENT_ENGINE_ID: {cocktail_agent_engine_id}")
 
-else:
-    logger.info(f"Using existing COCKTAIL_AGENT_ENGINE_ID: {cocktail_agent_engine_id}")
-    agent_engine_resource_name = (
-        f"projects/{PROJECT_NUMBER}/locations/{LOCATION}/reasoningEngines/{cocktail_agent_engine_id}"
-    )
-    logger.info(f"Attempting to deploy Cocktail Agent to Agent Engine: {agent_engine_resource_name}")
-    remote_a2a_agent = client.agent_engines.update(
-        name=agent_engine_resource_name,
-        agent=a2a_agent,
-        config=config,
-    )
+# --- Now, with a valid ID, define the A2A Agent and deploy the code ---
+logger.info(f"Using COCKTAIL_AGENT_ENGINE_ID: {cocktail_agent_engine_id}")
+
+a2a_agent = A2aAgent(
+    agent_card=cocktail_agent_card,
+    agent_executor_builder=CocktailAgentExecutor,
+    agent_executor_kwargs={"agent_engine_id": cocktail_agent_engine_id},
+)
+
+# Configuration for deploying the agent code
+agent_code_config = agent_engine_config.copy()
+agent_code_config.update({
+    "requirements": [
+        "google-cloud-aiplatform[agent_engines,adk]>=1.112.0",
+        "a2a-sdk >= 0.3.4",
+        "pydantic==2.11.9",
+        "cloudpickle==3.1.1",
+        "google-auth-oauthlib>=1.2.2",
+        "google-auth[openid]>=2.40.3",
+        "google-genai>=1.36.0",
+    ],
+    "env_vars": {
+        "CT_MCP_SERVER_URL": CT_MCP_SERVER_URL,
+        "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY": "true",
+        "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT": "true",
+        "PROJECT_ID": PROJECT_ID,
+        "LOCATION": LOCATION,
+    },
+    "extra_packages": ["specialized_agents/cocktail_agent", "shared"]
+})
+
+agent_engine_resource_name = (
+    f"projects/{PROJECT_NUMBER}/locations/{LOCATION}/reasoningEngines/{cocktail_agent_engine_id}"
+)
+logger.info(f"Attempting to deploy Cocktail Agent to Agent Engine: {agent_engine_resource_name}")
+remote_a2a_agent = client.agent_engines.update(
+    name=agent_engine_resource_name,
+    agent=a2a_agent,
+    config=agent_code_config,
+)
 
 # Retrieve the deployed AgentEngine object to access its agent_card
 remote_a2a_agent_retrieved = client.agent_engines.get(

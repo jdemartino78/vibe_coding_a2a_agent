@@ -58,7 +58,8 @@ gcloud services enable \
     alloydb.googleapis.com \
     secretmanager.googleapis.com \
     servicenetworking.googleapis.com \
-    compute.googleapis.com
+    compute.googleapis.com \
+    telemetry.googleapis.com
 ```
 
 ### 1. Environment Setup
@@ -120,9 +121,16 @@ This option packages the frontend into a container and deploys it as a secure, s
 
 The script will output the URL for your new Cloud Run service.
 
+Additionally, you can create a secure local proxy to your Cloud Run service using the gcloud CLI. This is useful for testing or accessing the service from your local machine without exposing it to the public internet. The name of the service might vary depending on your configuration, but it will likely be `adk-frontend`.
+
+```bash
+gcloud run services proxy adk-frontend --region us-central1 --port 8081
+```
+This command will print a local URL (e.g., `http://127.0.0.1:8081`) that you can use to access the frontend.
+
 ### 6. Test the System
 
-Open your web browser to `http://127.0.0.1:8080`. You can now chat with your multi-agent system.
+Open the URL for your frontend (either the local `http://127.0.0.1:8080`, the Cloud Run URL, or the proxied URL). You can now chat with your multi-agent system.
 
 Here are several test cases, ranging from simple to complex, to validate the full capabilities of the agent.
 
