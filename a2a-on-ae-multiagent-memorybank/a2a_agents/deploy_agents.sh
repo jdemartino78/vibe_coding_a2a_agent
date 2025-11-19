@@ -44,13 +44,9 @@ echo "Ensuring necessary IAM roles for Agent Engine and its service account..."
 # Get the project number from the project ID
 PROJECT_NUMBER=$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" --format="value(projectNumber)")
 
-# Construct the default compute service account email (for the agent's code)
-#AGENT_SERVICE_ACCOUNT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
-
 # Construct the Agent Engine Service Agent email (for the Agent Engine itself)
 AE_SERVICE_AGENT="service-${PROJECT_NUMBER}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
 
-echo "Target Agent Service Account: $AGENT_SERVICE_ACCOUNT"
 echo "Target Agent Engine Service Agent: $AE_SERVICE_AGENT"
 
 # Grant necessary roles to the AE_SERVICE_AGENT. The commands are idempotent.

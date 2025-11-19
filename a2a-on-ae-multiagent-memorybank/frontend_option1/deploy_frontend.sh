@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # deploy_frontend.sh
 # This script automates the deployment of the A2A Multi-Agent Frontend.
@@ -44,8 +45,6 @@ done
 
 # Activate the main virtual environment
 source .venv/bin/activate
-
-# source /usr/local/google/home/demart/vertex-ai-agents/a2a-on-ae-multiagent-memorybank/.venv/bin/activate
 
 # --- Execute based on Deployment Mode ---
 case "$DEPLOY_MODE" in

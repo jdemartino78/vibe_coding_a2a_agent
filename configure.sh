@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # This script initializes the project's environment configuration.
 # It creates a single .env file from the .env.example template
@@ -29,6 +30,21 @@ cp .env.example .env
 prompt_for_input "Enter your Google Cloud Project ID: " PROJECT_ID
 prompt_for_input "Enter your Google Cloud Project Number: " PROJECT_NUMBER
 prompt_for_input "Enter your unique Google Cloud Storage Bucket Name: " BUCKET_NAME
+
+# Check if the bucket exists and create it if it doesn't
+echo "Checking if bucket '$BUCKET_NAME' exists..."
+if gsutil ls -b gs://$BUCKET_NAME &>/dev/null; then
+    echo "Bucket '$BUCKET_NAME' already exists."
+else
+    echo "Bucket '$BUCKET_NAME' does not exist. Creating it..."
+    if gsutil mb -p $PROJECT_ID gs://$BUCKET_NAME; then
+        echo "Bucket '$BUCKET_NAME' created successfully."
+    else
+        echo "ERROR: Failed to create bucket '$BUCKET_NAME'. Please check your permissions and try again."
+        exit 1
+    fi
+fi
+
 prompt_for_input "Enter a user ID for the application (e.g., your email or a unique nickname): " USER_ID
 
 # Substitute placeholders in the new .env file

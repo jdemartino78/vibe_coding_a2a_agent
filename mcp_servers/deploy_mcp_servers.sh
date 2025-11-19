@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # This script deploys both the Cocktail and Weather MCP Servers to Google Cloud Run.
 # It sources the central .env file from the project root for configuration.

@@ -17,6 +17,7 @@ from shared.adk_orchestrator_agent import AdkOrchestratorAgentExecutor
 from shared.custom_context_builder import CustomCallContextBuilder
 from shared.dependencies import get_database_task_store, initialize_dependencies, get_db_engine
 from shared.session_store import initialize_session_store
+from typing import Optional
 import logging
 import os
 from dotenv import load_dotenv
@@ -35,13 +36,14 @@ class OrchestratorAgentExecutor(AgentExecutor):
     management.
     """
 
-    def __init__(self, agent_engine_id: str = None) -> None:
+    def __init__(self, agent_engine_id: Optional[str] = None, **kwargs) -> None:
         """
         Initializes the OrchestratorAgentExecutor.
 
         Args:
             agent_engine_id: Optional agent engine ID.
         """
+        super().__init__(**kwargs) # Call super() with any extra kwargs
         self._core_executor: AdkOrchestratorAgentExecutor | None = None
         self._task_store: TaskStore | None = None
         self._setup_lock = asyncio.Lock()
