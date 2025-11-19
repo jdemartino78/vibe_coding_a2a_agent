@@ -189,8 +189,7 @@ agent_code_config.update({
         "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY": "true",
         "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT": "true",
         "PROJECT_ID": PROJECT_ID,
-        "LOCATION": LOCATION,
-        "GOOGLE_CLOUD_QUOTA_PROJECT": PROJECT_ID
+        "LOCATION": LOCATION
     },
     "extra_packages": ["orchestrator", "shared"]
 })
