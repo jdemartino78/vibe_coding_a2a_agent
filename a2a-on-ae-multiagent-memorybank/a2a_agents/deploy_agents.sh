@@ -39,6 +39,7 @@ python -m orchestrator.deploy_orchestrator
 echo "All agents deployed."
 
 # --- IAM Permission Setup ---
+
 echo "Ensuring necessary IAM roles for Agent Engine and its service account..."
 
 # Get the project number from the project ID
@@ -56,11 +57,12 @@ gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
     --role="roles/secretmanager.secretAccessor" \
     --condition=None
 
-echo "Granting Secret Manager Secret Accessor role to agent service account..."
+echo "Granting Cloud Telemetry Writer role to agent service account..."
 gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
     --member="serviceAccount:$AE_SERVICE_AGENT" \
-    --role="roles/serviceusage.serviceUsageConsumer" \
+    --role="roles/telemetry.writer" \
     --condition=None
+
 
 echo "Granting Cloud AlloyDB Client role to agent service account..."
 gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
@@ -72,6 +74,12 @@ echo "Granting Vertex AI User role to agent service account..."
 gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
     --member="serviceAccount:$AE_SERVICE_AGENT" \
     --role="roles/aiplatform.user" \
+    --condition=None
+
+echo "Granting Logs Writer role to agent service account..."
+gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+    --member="serviceAccount:$AE_SERVICE_AGENT" \
+    --role="roles/logging.logWriter" \
     --condition=None
 
 # Grant necessary roles to the AE_SERVICE_AGENT. The commands are idempotent.

@@ -32,6 +32,7 @@ By the end of this session, you will be able to:
     - Artifact Registry
     - **AlloyDB**
     - **Secret Manager**
+    - Telemetry API 
 
 ## Step-by-Step Instructions
 
