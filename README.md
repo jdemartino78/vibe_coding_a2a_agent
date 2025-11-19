@@ -32,6 +32,7 @@ By the end of this session, you will be able to:
     - Artifact Registry
     - **AlloyDB**
     - **Secret Manager**
+    - Telemetry API 
 
 ## Step-by-Step Instructions
 
@@ -58,7 +59,8 @@ gcloud services enable \
     alloydb.googleapis.com \
     secretmanager.googleapis.com \
     servicenetworking.googleapis.com \
-    compute.googleapis.com
+    compute.googleapis.com \
+    telemetry.googleapis.com
 ```
 
 ### 1. Environment Setup

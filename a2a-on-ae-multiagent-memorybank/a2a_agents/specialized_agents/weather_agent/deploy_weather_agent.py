@@ -109,7 +109,7 @@ a2a_agent = A2aAgent(
 config = {
     "display_name": f"{a2a_agent.agent_card.name}-MemoryBank",
     "description": a2a_agent.agent_card.description,
-    "service_account": f"service-{PROJECT_NUMBER}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
+    "service_account": f"{PROJECT_NUMBER}-compute@developer.gserviceaccount.com",
     "requirements": [
         "google-cloud-aiplatform[agent_engines,adk]>=1.112.0",
         "a2a-sdk >= 0.3.4",
