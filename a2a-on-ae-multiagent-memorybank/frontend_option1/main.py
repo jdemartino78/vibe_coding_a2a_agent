@@ -130,35 +130,45 @@ async def get_agent_card(resource_name: str) -> object:
 async def get_response_from_agent(
     query: str,
     session_state: Dict[str, Any]
-) -> AsyncIterator[Tuple[str, Dict[str, Any]]]:
-    """Get response from host agent."""
+) -> AsyncIterator[Tuple[str, List[Dict[str, Any]], Dict[str, Any]]]:
+    """Get response from host agent and capture protocol logs."""
 
     a2a_client: Client = None
     httpx_client: httpx.AsyncClient = None
+    logs: List[Dict[str, Any]] = []
+
+    def add_log(event: str, details: Any, level: str = "INFO"):
+        logs.append({
+            "event": event,
+            "details": details,
+            "level": level,
+            "timestamp": asyncio.get_event_loop().time()
+        })
+        logger.info(f"[{event}] {details}")
 
     try:
-        logger.info("Fetching agent card...")
+        add_log("Initialization", f"Fetching agent card for: {remote_a2a_agent_resource_name}")
         remote_a2a_agent_card = await get_agent_card(remote_a2a_agent_resource_name)
-        logger.info("Agent card fetched successfully")
+        
         agent_card_json = json.loads(remote_a2a_agent_card.json())
-        agent_name = agent_card_json["name"]
-        logger.info(f"Agent card for {agent_name} fetched successfully") 
+        agent_name = agent_card_json.get("name", "Unknown Agent")
+        add_log("Agent Card Received", agent_card_json)
 
         httpx_client = httpx.AsyncClient(
             timeout=120,
             auth=GoogleAuth(),
         )
 
-
         factory = ClientFactory(
             ClientConfig(
                 supported_transports=[TransportProtocol.http_json],
                 use_client_preference=True,
                 httpx_client=httpx_client,
+                streaming=False,
             )
         )
         a2a_client = factory.create(remote_a2a_agent_card)
-        logger.info("A2A client created successfully")
+        add_log("Client Created", "A2A Client initialized with HTTP/JSON transport (Non-streaming)")
 
         message_payload = {
             "message_id": f"message-{os.urandom(8).hex()}",
@@ -171,33 +181,82 @@ async def get_response_from_agent(
         if session_state.get("context_id"):
             message_payload["context_id"] = session_state["context_id"]
 
+        add_log("Sending Message", message_payload)
+        
         message = Message(**message_payload)
-
-        logger.info(f"Sending message to agent {agent_name}: {query}")
         response_stream = a2a_client.send_message(message)
 
         final_result_text = None
         final_task_object = None
 
         async for response_chunk in response_stream:
-            task_object = response_chunk[0]
+            if isinstance(response_chunk, tuple):
+                task_object = response_chunk[0]
+            else:
+                task_object = response_chunk
+            
             final_task_object = task_object
+            
+            # Convert task object to dict for logging, handling non-serializable types if needed
+            task_dict = json.loads(task_object.json())
 
-            logger.debug(f"Received task update. Status: {task_object.status.state}")
+            # Process task artifacts for custom logs (delegation steps)
+            if hasattr(task_object, 'artifacts') and task_object.artifacts:
+                for artifact in task_object.artifacts:
+                    if artifact.name == "delegation_log" and artifact.parts:
+                         for part in artifact.parts:
+                             if part.root.kind == "text":
+                                 add_log(
+                                     "Orchestrator Delegation", 
+                                     {"message": part.root.text, "metadata": artifact.metadata}, 
+                                     level="INFO"
+                                 )
+
+            # Process task history for intermediate logs (fallback)
+            if hasattr(task_object, 'history') and task_object.history:
+                for hist_message in task_object.history:
+                    if hist_message.role == Role.agent and hist_message.parts:
+                        # Check if it's a delegation message (from the orchestrator's TaskState.working update)
+                        # Fix: Access .root.text, not .text directly on the Part object
+                        if any(
+                            p.root.kind == "text" and p.root.text and "Delegating to" in p.root.text 
+                            for p in hist_message.parts
+                        ):
+                             # Find the first text part to display
+                            first_text_part = next((p.root.text for p in hist_message.parts if p.root.kind == "text"), "")
+                            add_log(
+                                "Orchestrator Delegation (History)", 
+                                {"message": first_text_part, "metadata": hist_message.metadata}, 
+                                level="INFO"
+                            )
+
+            add_log("Task Update", task_dict)
+            
+            # Yield current state with logs
+            yield "", logs, session_state
 
             if task_object.status.state in (TaskState.completed, TaskState.failed):
-                logger.info(f"Task reached terminal state: {task_object.status.state}")
                 if hasattr(task_object, "artifacts") and task_object.artifacts:
+                    # Priority 1: Look for explicit "final_answer" or "answer" artifact
                     for artifact in task_object.artifacts:
-                        if artifact.parts and isinstance(artifact.parts[0].root, TextPart):
-                            final_result_text = artifact.parts[0].root.text
-                            logger.info(f"Found artifact text: {final_result_text[:50]}...")
-                            break
+                        if artifact.name in ("final_answer", "answer") and artifact.parts:
+                             if isinstance(artifact.parts[0].root, TextPart):
+                                final_result_text = artifact.parts[0].root.text
+                                break 
+                    
+                    # Priority 2: If no explicit answer found, take the last text artifact (fallback)
+                    if not final_result_text:
+                         for artifact in reversed(task_object.artifacts):
+                            if artifact.parts and isinstance(artifact.parts[0].root, TextPart):
+                                # Ignore delegation logs in fallback if possible
+                                if artifact.name != "delegation_log":
+                                    final_result_text = artifact.parts[0].root.text
+                                    break
+                
                 if final_result_text:
                     break
             
             elif task_object.status.state == TaskState.input_required:
-                logger.info("Task requires more input.")
                 if task_object.status.message and task_object.status.message.parts:
                     final_result_text = task_object.status.message.parts[0].root.text
                     break
@@ -210,74 +269,152 @@ async def get_response_from_agent(
                 session_state["task_id"] = final_task_object.id
 
         if final_result_text:
-            yield final_result_text, session_state
+            add_log("Final Response", final_result_text)
+            yield final_result_text, logs, session_state
         else:
-            logger.warning("Task finished but no text artifact was found")
-            no_response_message = "I processed your request but found no text response."
-            yield no_response_message, session_state
+            msg = "I processed your request but found no text response."
+            add_log("Warning", msg, level="WARNING")
+            yield msg, logs, session_state
 
     except Exception as e:
-        logger.error(
-            f"Error in get_response_from_agent (Type: {type(e).__name__}): {e}", exc_info=True
-        )
-        error_response = f"An error occurred: {e}"
-        yield error_response, session_state
+        error_msg = f"An error occurred: {str(e)}"
+        add_log("Error", error_msg, level="ERROR")
+        yield error_msg, logs, session_state
     finally:
         if a2a_client:
             await a2a_client.close()
-            logger.debug("A2A client closed")
         elif httpx_client:
             await httpx_client.aclose()
-            logger.debug("HTTPX client closed")
 
 
 async def main() -> None:
     """Main gradio app that launches the Gradio interface."""
+    
+    # Custom CSS for a modern, clean look
+    custom_css = """
+    .gradio-container {
+        font-family: 'Google Sans', 'Helvetica Neue', sans-serif;
+    }
+    .header-image {
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+        width: 80px;
+        margin-bottom: 10px;
+    }
+    .header-text {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    .chat-column {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+    .inspector-column {
+        background: #f8f9fa;
+        border-radius: 12px;
+        padding: 20px;
+        border: 1px solid #e9ecef;
+        height: 100%;
+    }
+    .json-viewer {
+        font-family: 'Fira Code', monospace;
+        font-size: 12px;
+    }
+    """
 
-    with gr.Blocks(theme=gr.themes.Ocean(), title="A2A Host Agent") as demo:
+    theme = gr.themes.Soft(
+        primary_hue="indigo",
+        secondary_hue="blue",
+        neutral_hue="slate",
+    ).set(
+        body_background_fill="#f0f2f5",
+        block_background_fill="#ffffff",
+        block_border_width="0px",
+        block_shadow="0 2px 4px rgba(0,0,0,0.05)",
+    )
+
+    with gr.Blocks(theme=theme, css=custom_css, title="A2A Host Agent") as demo:
         session_state = gr.State({})
         
-        with gr.Row():
+        with gr.Column(elem_classes="header-text"):
             gr.Image(
                 value="static/a2a.png",
                 interactive=False,
-                width=100,
-                height=100,
-                scale=0,
                 show_label=False,
                 show_download_button=False,
                 container=False,
-                show_fullscreen_button=False,
+                elem_classes="header-image",
+                height=80,
+                width=80
             )
-        
-        gr.Markdown("# A2A Host Agent")
-        gr.Markdown("This assistant can help you to check weather and find cocktail information")
+            gr.Markdown("# A2A Host Agent\nThis assistant can help you check weather and find cocktail information.")
 
-        chatbot = gr.Chatbot()
-        msg = gr.Textbox()
-        clear = gr.ClearButton([msg, chatbot, session_state])
+        with gr.Row():
+            # Left Column: Chat Interface
+            with gr.Column(scale=3, elem_classes="chat-column"):
+                chatbot = gr.Chatbot(
+                    height=600,
+                    type="messages",
+                    bubble_full_width=False,
+                    avatar_images=(None, "static/a2a.png"), # Optional: Add user avatar if available
+                )
+                with gr.Row():
+                    msg = gr.Textbox(
+                        placeholder="Type a message...",
+                        show_label=False,
+                        scale=8,
+                        container=False
+                    )
+                    submit_btn = gr.Button("Send", scale=1, variant="primary")
+                clear = gr.ClearButton([msg, chatbot, session_state])
+
+            # Right Column: Protocol Inspector
+            with gr.Column(scale=2, elem_classes="inspector-column"):
+                gr.Markdown("### 🔍 Protocol Inspector\nLive view of A2A protocol messages and events.")
+                protocol_logs = gr.JSON(
+                    label="Protocol Trace",
+                    value=[],
+                    elem_classes="json-viewer"
+                )
 
         async def respond(
             message: str,
-            chat_history: List[Tuple[str, str]],
+            chat_history: List[Dict[str, str]],
             session: Dict[str, Any],
-        ) -> AsyncIterator[Tuple[str, List[Tuple[str, str]], Dict[str, Any]]]:
+        ) -> AsyncIterator[Tuple[List[Dict[str, str]], List[Dict[str, Any]], Dict[str, Any]]]:
             """Wrapper to provide immediate feedback and stream responses."""
             # 1. Immediately append the user's message to the history
-            chat_history.append((message, None))
-            yield "", chat_history, session
+            chat_history.append({"role": "user", "content": message})
+            yield chat_history, [], session
 
             # 2. Stream the response from the agent
-            async for bot_response, new_session in get_response_from_agent(
+            async for bot_response_text, logs, new_session in get_response_from_agent(
                 message, session
             ):
-                # 3. Update the history with the final response
-                chat_history.append((None, bot_response))
-                yield "", chat_history, new_session
+                # If we have a partial or final text response, show it
+                # Note: Gradio Chatbot 'messages' format expects a full history list
+                
+                current_history = list(chat_history) # Copy
+                if bot_response_text:
+                    # Check if last message is from assistant to update it, else append
+                    if current_history and current_history[-1]["role"] == "assistant":
+                         current_history[-1]["content"] = bot_response_text
+                    else:
+                         current_history.append({"role": "assistant", "content": bot_response_text})
+                
+                yield current_history, logs, new_session
 
+        # Bind events
         msg.submit(
-            respond, [msg, chatbot, session_state], [msg, chatbot, session_state]
-        )
+            respond, [msg, chatbot, session_state], [chatbot, protocol_logs, session_state]
+        ).then(lambda: gr.update(value=""), None, [msg]) # Clear input after submit
+        
+        submit_btn.click(
+            respond, [msg, chatbot, session_state], [chatbot, protocol_logs, session_state]
+        ).then(lambda: gr.update(value=""), None, [msg])
 
     # Add a health check endpoint to the underlying FastAPI app
     @demo.app.get("/health")
@@ -290,6 +427,7 @@ async def main() -> None:
     demo.queue().launch(
         server_name="0.0.0.0",
         server_port=port,
+        allowed_paths=["static"]
     )
 
 

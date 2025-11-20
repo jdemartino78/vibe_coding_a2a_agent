@@ -55,6 +55,22 @@ gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
 echo "--- IAM roles for MCP deployment are set ---"
 # --- End of IAM Setup ---
 
+# --- Ensure Artifact Registry Repository Exists ---
+# To prevent race conditions during parallel deployment, we ensure the repository exists first.
+REPO_NAME="cloud-run-source-deploy"
+echo "--- Checking for Artifact Registry repository: $REPO_NAME ---"
+if ! gcloud artifacts repositories describe "$REPO_NAME" --location="$GOOGLE_CLOUD_LOCATION" --project="$GOOGLE_CLOUD_PROJECT" &>/dev/null; then
+    echo "Repository $REPO_NAME not found. Creating it..."
+    gcloud artifacts repositories create "$REPO_NAME" \
+        --repository-format=docker \
+        --location="$GOOGLE_CLOUD_LOCATION" \
+        --project="$GOOGLE_CLOUD_PROJECT" \
+        --description="Cloud Run Source Deploy" \
+        --quiet
+else
+    echo "Repository $REPO_NAME already exists."
+fi
+
 
 # --- Function to deploy a service in the background ---
 deploy_service() {

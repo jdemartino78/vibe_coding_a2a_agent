@@ -83,6 +83,14 @@ case "$DEPLOY_MODE" in
         echo "Agent Engine ID: $ORCHESTRATOR_AGENT_ENGINE_ID"
         echo "Cloud Run Service Name: $FRONTEND_SERVICE_NAME"
 
+        # --- Grant Necessary IAM Roles ---
+        echo "Ensuring Cloud Run service account has Vertex AI User role..."
+        DEFAULT_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+        gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+            --member="serviceAccount:$DEFAULT_SA" \
+            --role="roles/aiplatform.user" \
+            --condition=None
+
         echo "Deploying frontend service to Cloud Run..."
         cp ../../.env .
         gcloud run deploy "$FRONTEND_SERVICE_NAME" \

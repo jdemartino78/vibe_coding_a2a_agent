@@ -19,12 +19,17 @@ from a2a.types import (
     TransportProtocol,
     TaskQueryParams,
 )
+from a2a.utils import new_agent_text_message
 from shared.auth_utils import GoogleAuth
 
 # --- CONTEXT VARIABLE FOR USER_ID ---
 # This context variable will hold the user_id for the current request,
 # allowing it to be accessed safely in a concurrent environment.
 user_id_context = contextvars.ContextVar('user_id_for_delegation', default='default-user')
+
+# --- CONTEXT VARIABLE FOR TASK UPDATER ---
+# This allows the tool to send status updates back to the client (Orchestrator's client).
+task_updater_context = contextvars.ContextVar('task_updater_context', default=None)
 
 
 # --- EFFICIENT, SHARED, AUTHENTICATED, NON-STREAMING CLIENT SETUP ---
@@ -105,6 +110,25 @@ async def delegate_to_specialist_agent(agent_name: str, query: str) -> str:
     # Get the user_id from the context variable
     user_id = user_id_context.get()
     logger.info(f"Attempting to delegate to '{agent_name}' with query: '{query}' for user_id: '{user_id}'")
+
+    # Send a status update via the orchestrator's TaskUpdater (if available)
+    updater = task_updater_context.get()
+    if updater:
+        try:
+            delegation_msg = f"Delegating to {agent_name} with query: '{query}'"
+            await updater.update_status(
+                TaskState.working,
+                message=new_agent_text_message(delegation_msg),
+                metadata={"delegated_agent": agent_name, "delegated_query": query}
+            )
+            # Add artifact for persistent logging in non-streaming environments
+            await updater.add_artifact(
+                [TextPart(text=delegation_msg)],
+                name="delegation_log",
+                metadata={"agent": agent_name, "query": query, "timestamp": str(asyncio.get_event_loop().time())}
+            )
+        except Exception as e:
+             logger.warning(f"Failed to send status update or add artifact: {e}")
     
     client = None
     try:

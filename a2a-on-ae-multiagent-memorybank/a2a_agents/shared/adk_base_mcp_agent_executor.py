@@ -39,6 +39,7 @@ from google.auth import exceptions as google_auth_exceptions
 from google.auth.transport import requests as google_auth_requests
 from google.genai import types
 from google.oauth2 import id_token as google_id_token
+from shared.a2a_tools import task_updater_context
 
 # Imports for MemoryBankCustomizationConfig
 from vertexai._genai.types import MemoryBankCustomizationConfig as CustomizationConfig
@@ -466,7 +467,6 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
                     McpToolset(
                         connection_params=mcp_server_params,
                     ),
-                    adk.tools.preload_memory_tool.PreloadMemoryTool(),
                 ],
                 after_agent_callback=auto_save_session_to_memory_callback,
             )
@@ -561,15 +561,21 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
         # Run the agent asynchronously
         runner_start_time = time.time()
         final_answer = "No answer found."
-        async for event in self.runner.run_async(
-            session_id=session.id,
-            user_id=user_id,
-            new_message=content,
-        ):
-            if event.is_final_response():
-                final_answer = self._extract_answer(event)
-                logging.info(f"Final Answer from runner: {final_answer}")
-                # Don't break; let all callbacks finish
+        
+        # Set the task updater in context so tools can access it
+        token = task_updater_context.set(updater)
+        try:
+            async for event in self.runner.run_async(
+                session_id=session.id,
+                user_id=user_id,
+                new_message=content,
+            ):
+                if event.is_final_response():
+                    final_answer = self._extract_answer(event)
+                    logging.info(f"Final Answer from runner: {final_answer}")
+                    # Don't break; let all callbacks finish
+        finally:
+            task_updater_context.reset(token)
         
         runner_end_time = time.time()
         logging.info(f"ADK Runner execution time for task {context.task_id}: {runner_end_time - runner_start_time:.2f} seconds")

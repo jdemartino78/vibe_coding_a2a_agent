@@ -42,7 +42,7 @@ from vertexai.preview.reasoning_engines.templates.adk import (
 )
 
 # Custom Imports
-from shared.a2a_tools import delegate_to_specialist_agent, user_id_context
+from shared.a2a_tools import delegate_to_specialist_agent, user_id_context, task_updater_context
 from shared.adk_base_mcp_agent_executor import PersistentVertexAiMemoryBankService
 from shared.session_store import get_session_mapping, set_session_mapping
 
@@ -228,9 +228,11 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
 
         await updater.start_work()
 
-        token = None
+        user_id_token = None
+        updater_token = None
         try:
-            token = user_id_context.set(user_id)
+            user_id_token = user_id_context.set(user_id)
+            updater_token = task_updater_context.set(updater)
 
             session_service = VertexAiSessionService(
                 project=self.project_id,
@@ -268,8 +270,10 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
             )
             raise
         finally:
-            if token:
-                user_id_context.reset(token)
+            if user_id_token:
+                user_id_context.reset(user_id_token)
+            if updater_token:
+                task_updater_context.reset(updater_token)
 
     async def _get_or_create_session(self, session_service: VertexAiSessionService, context_id: str, user_id: str):
         """
