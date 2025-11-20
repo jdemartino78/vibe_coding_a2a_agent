@@ -1,6 +1,15 @@
 #!/bin/bash
 
 # This script deploys the Cocktail, Weather, and Orchestrator agents.
+# It can deploy all agents at once or individual agents using flags.
+#
+# Usage:
+#   ./deploy_agents.sh (deploys all agents)
+#   ./deploy_agents.sh --cocktail (deploys only the Cocktail agent)
+#   ./deploy_agents.sh --weather (deploys only the Weather agent)
+#   ./deploy_agents.sh --orchestrator (deploys only the Orchestrator agent)
+#   ./deploy_agents.sh --cocktail --weather (deploys Cocktail and Weather agents)
+#
 # It sources the central .env file from the project root for configuration.
 # It also ensures the default service account has the necessary IAM roles.
 
@@ -21,22 +30,53 @@ set -a
 source "$PROJECT_ROOT/.env"
 set +a
 
-# Deploy specialized agents sequentially to avoid race conditions
-echo "Deploying Cocktail Agent..."
-python -m specialized_agents.cocktail_agent.deploy_cocktail_agent
+deploy_cocktail() {
+  echo "Deploying Cocktail Agent..."
+  python -m specialized_agents.cocktail_agent.deploy_cocktail_agent
+}
 
-echo "Deploying Weather Agent..."
-python -m specialized_agents.weather_agent.deploy_weather_agent
+deploy_weather() {
+  echo "Deploying Weather Agent..."
+  python -m specialized_agents.weather_agent.deploy_weather_agent
+}
 
-# Re-source the environment file to pick up the newly created agent URLs
-set -a
-source "$PROJECT_ROOT/.env"
-set +a
+deploy_orchestrator() {
+  # Re-source the environment file to pick up the newly created agent URLs
+  set -a
+  source "$PROJECT_ROOT/.env"
+  set +a
+  echo "Deploying Orchestrator Agent..."
+  python -m orchestrator.deploy_orchestrator
+}
 
-echo "Deploying Orchestrator Agent..."
-python -m orchestrator.deploy_orchestrator
+if [ "$#" -eq 0 ]; then
+  # No arguments, deploy all agents sequentially
+  deploy_cocktail
+  deploy_weather
+  deploy_orchestrator
+  echo "All agents deployed."
+else
+  # Loop through arguments and deploy specified agents
+  for arg in "$@"
+  do
+    case $arg in
+      --cocktail)
+        deploy_cocktail
+        ;;
+      --weather)
+        deploy_weather
+        ;;
+      --orchestrator)
+        deploy_orchestrator
+        ;;
+      *)
+        echo "Unknown option: $arg"
+        exit 1
+        ;;
+    esac
+  done
+fi
 
-echo "All agents deployed."
 
 # --- IAM Permission Setup ---
 

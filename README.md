@@ -92,7 +92,9 @@ This step deploys the Orchestrator, Cocktail, and Weather agents to Vertex AI Ag
 
 Run the following command to set up the virtual environment, install dependencies, and deploy all three agents:
 ```bash
-(cd a2a-on-ae-multiagent-memorybank/a2a_agents && uv venv && source .venv/bin/activate && uv sync --python 3.12 && ./deploy_agents.sh)
+(cd a2a-on-ae-multiagent-memorybank/a2a_agents && [ -d .venv ] || uv venv && source .venv/bin/activate && uv sync --python 3.12 && ./deploy_agents.sh)
+
+To deploy a specific agent, use the `--cocktail`, `--weather`, or `--orchestrator` flags (e.g., `./deploy_agents.sh --orchestrator`).
 ```
 This script will also save the agent URLs and Engine IDs in the root `.env` file.
 
@@ -107,7 +109,7 @@ You have two options for running the user-facing web interface: running it local
 This is the fastest way to start interacting with your agent. The script will install dependencies and start the Gradio web server on your local machine.
 
 ```bash
-(cd a2a-on-ae-multiagent-memorybank/frontend_option1 && uv venv && source .venv/bin/activate && uv sync --python 3.12 && ./deploy_frontend.sh --mode local)
+(cd a2a-on-ae-multiagent-memorybank/frontend_option1 && [ -d .venv ] || uv venv && source .venv/bin/activate && uv sync --python 3.12 && ./deploy_frontend.sh --mode local)
 ```
 
 After it starts, open your web browser to `http://127.0.0.1:8080`.
