@@ -217,10 +217,16 @@ async def get_response_from_agent(
                 for hist_message in task_object.history:
                     if hist_message.role == Role.agent and hist_message.parts:
                         # Check if it's a delegation message (from the orchestrator's TaskState.working update)
-                        if any("Delegating to" in p.text for p in hist_message.parts if p.text):
+                        # Fix: Access .root.text, not .text directly on the Part object
+                        if any(
+                            p.root.kind == "text" and p.root.text and "Delegating to" in p.root.text 
+                            for p in hist_message.parts
+                        ):
+                             # Find the first text part to display
+                            first_text_part = next((p.root.text for p in hist_message.parts if p.root.kind == "text"), "")
                             add_log(
                                 "Orchestrator Delegation (History)", 
-                                {"message": hist_message.parts[0].root.text, "metadata": hist_message.metadata}, 
+                                {"message": first_text_part, "metadata": hist_message.metadata}, 
                                 level="INFO"
                             )
 
@@ -231,10 +237,22 @@ async def get_response_from_agent(
 
             if task_object.status.state in (TaskState.completed, TaskState.failed):
                 if hasattr(task_object, "artifacts") and task_object.artifacts:
+                    # Priority 1: Look for explicit "final_answer" or "answer" artifact
                     for artifact in task_object.artifacts:
-                        if artifact.parts and isinstance(artifact.parts[0].root, TextPart):
-                            final_result_text = artifact.parts[0].root.text
-                            break
+                        if artifact.name in ("final_answer", "answer") and artifact.parts:
+                             if isinstance(artifact.parts[0].root, TextPart):
+                                final_result_text = artifact.parts[0].root.text
+                                break 
+                    
+                    # Priority 2: If no explicit answer found, take the last text artifact (fallback)
+                    if not final_result_text:
+                         for artifact in reversed(task_object.artifacts):
+                            if artifact.parts and isinstance(artifact.parts[0].root, TextPart):
+                                # Ignore delegation logs in fallback if possible
+                                if artifact.name != "delegation_log":
+                                    final_result_text = artifact.parts[0].root.text
+                                    break
+                
                 if final_result_text:
                     break
             
