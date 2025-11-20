@@ -199,6 +199,31 @@ async def get_response_from_agent(
             
             # Convert task object to dict for logging, handling non-serializable types if needed
             task_dict = json.loads(task_object.json())
+
+            # Process task artifacts for custom logs (delegation steps)
+            if hasattr(task_object, 'artifacts') and task_object.artifacts:
+                for artifact in task_object.artifacts:
+                    if artifact.name == "delegation_log" and artifact.parts:
+                         for part in artifact.parts:
+                             if part.root.kind == "text":
+                                 add_log(
+                                     "Orchestrator Delegation", 
+                                     {"message": part.root.text, "metadata": artifact.metadata}, 
+                                     level="INFO"
+                                 )
+
+            # Process task history for intermediate logs (fallback)
+            if hasattr(task_object, 'history') and task_object.history:
+                for hist_message in task_object.history:
+                    if hist_message.role == Role.agent and hist_message.parts:
+                        # Check if it's a delegation message (from the orchestrator's TaskState.working update)
+                        if any("Delegating to" in p.text for p in hist_message.parts if p.text):
+                            add_log(
+                                "Orchestrator Delegation (History)", 
+                                {"message": hist_message.parts[0].root.text, "metadata": hist_message.metadata}, 
+                                level="INFO"
+                            )
+
             add_log("Task Update", task_dict)
             
             # Yield current state with logs
