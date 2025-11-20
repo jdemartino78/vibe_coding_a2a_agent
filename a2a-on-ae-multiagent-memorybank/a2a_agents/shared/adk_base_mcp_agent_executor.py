@@ -466,7 +466,6 @@ class AdkBaseMcpAgentExecutor(AgentExecutor, ABC):
                     McpToolset(
                         connection_params=mcp_server_params,
                     ),
-                    adk.tools.preload_memory_tool.PreloadMemoryTool(),
                 ],
                 after_agent_callback=auto_save_session_to_memory_callback,
             )
