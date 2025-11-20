@@ -93,9 +93,9 @@ This step deploys the Orchestrator, Cocktail, and Weather agents to Vertex AI Ag
 Run the following command to set up the virtual environment, install dependencies, and deploy all three agents:
 ```bash
 (cd a2a-on-ae-multiagent-memorybank/a2a_agents && [ -d .venv ] || uv venv && source .venv/bin/activate && uv sync --python 3.12 && ./deploy_agents.sh)
-
-To deploy a specific agent, use the `--cocktail`, `--weather`, or `--orchestrator` flags (e.g., `./deploy_agents.sh --orchestrator`).
 ```
+
+*Note: To deploy a specific agent, use the `--cocktail`, `--weather`, or `--orchestrator` flags (e.g., `./deploy_agents.sh --orchestrator`).
 This script will also save the agent URLs and Engine IDs in the root `.env` file.
 
 
@@ -119,7 +119,7 @@ After it starts, open your web browser to `http://127.0.0.1:8080`.
 This option packages the frontend into a container and deploys it as a secure, scalable web service on Google Cloud.
 
 ```bash
-(cd a2a-on-ae-multiagent-memorybank/frontend_option1 && uv venv && source .venv/bin/activate && uv sync --python 3.12 && ./deploy_frontend.sh --mode cloudrun)
+(cd a2a-on-ae-multiagent-memorybank/frontend_option1 && [ -d .venv ] || uv venv && source .venv/bin/activate && uv sync --python 3.12 && ./deploy_frontend.sh --mode cloudrun)
 ```
 
 The script will output the URL for your new Cloud Run service.
