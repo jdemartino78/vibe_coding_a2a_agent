@@ -36,6 +36,7 @@ from google.adk.agents.context_cache_config import ContextCacheConfig
 from google.adk.artifacts import InMemoryArtifactService
 from google.adk.sessions import VertexAiSessionService
 from google.adk.tools.preload_memory_tool import PreloadMemoryTool
+from google.adk.plugins.logging_plugin import LoggingPlugin
 from google.genai import types as genai_types
 from vertexai.preview.reasoning_engines.templates.adk import (
     _default_instrumentor_builder,
