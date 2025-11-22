@@ -14,8 +14,8 @@ from google.auth import default
 from google.auth.transport.requests import Request as AuthRequest
 
 # Import the Agent Card and Agent Executor specific to the Cocktail Agent
-from specialized_agents.cocktail_agent.cocktail_agent_card import cocktail_agent_card
-from specialized_agents.cocktail_agent.cocktail_agent_executor import CocktailAgentExecutor
+from specialized.cocktail.card import cocktail_agent_card
+from specialized.cocktail.executor import CocktailAgentExecutor
 
 # Import the A2aAgent class from Vertex AI SDK for deployment
 from vertexai.preview.reasoning_engines import A2aAgent
@@ -167,7 +167,7 @@ agent_code_config.update({
         "PROJECT_ID": PROJECT_ID,
         "LOCATION": LOCATION,
     },
-    "extra_packages": ["specialized_agents/cocktail_agent", "shared"]
+    "extra_packages": ["specialized/cocktail", "shared"]
 })
 
 agent_engine_resource_name = (

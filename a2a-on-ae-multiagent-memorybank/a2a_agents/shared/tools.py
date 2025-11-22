@@ -22,10 +22,17 @@ from a2a.types import (
 from a2a.utils import new_agent_text_message
 from shared.auth_utils import GoogleAuth
 
+# --- EXTENSION KEYS ---
+TRACEABILITY_EXTENSION_KEY = "github.com/a2aproject/a2a-protocol/extensions/traceability/v1/trace_id"
+
 # --- CONTEXT VARIABLE FOR USER_ID ---
 # This context variable will hold the user_id for the current request,
 # allowing it to be accessed safely in a concurrent environment.
 user_id_context = contextvars.ContextVar('user_id_for_delegation', default='default-user')
+
+# --- CONTEXT VARIABLE FOR TRACEABILITY ---
+# Holds the current trace_id (correlation ID) to propagate to sub-agents.
+trace_id_context = contextvars.ContextVar('trace_id_context', default=None)
 
 # --- CONTEXT VARIABLE FOR TASK UPDATER ---
 # This allows the tool to send status updates back to the client (Orchestrator's client).
@@ -69,11 +76,11 @@ TERMINAL_STATES = {
 }
 
 
-def _get_final_text_from_task(response: Task | Message) -> str:
+def _get_final_text_from_task(response: Union[Task, Message]) -> str:
     """
     Helper function to extract the raw text content from a completed Task's artifacts.
     """
-    raw_text = ""
+    raw_text: str = ""
     if isinstance(response, Task):
         if response.artifacts:
             for artifact in response.artifacts:
@@ -97,6 +104,13 @@ async def delegate_to_specialist_agent(agent_name: str, query: str) -> str:
     """
     Delegates a query to a specialist agent using a non-streaming, polling pattern
     and returns the final raw response from the task artifacts.
+
+    Args:
+        agent_name: The name of the specialized agent to delegate to (e.g., 'Cocktail Agent', 'Weather Agent').
+        query: The specific query string to send to the specialized agent.
+
+    Returns:
+        The raw text response from the specialist agent as a string, or an error message.
     """
     url_var = REMOTE_AGENT_URL_VARS.get(agent_name)
     if not url_var:
@@ -107,12 +121,14 @@ async def delegate_to_specialist_agent(agent_name: str, query: str) -> str:
     if not agent_url:
         return f"Error: The URL for '{agent_name}' is not configured via {url_var}."
 
-    # Get the user_id from the context variable
-    user_id = user_id_context.get()
-    logger.info(f"Attempting to delegate to '{agent_name}' with query: '{query}' for user_id: '{user_id}'")
+    # Get the user_id and trace_id from the context variables
+    user_id: str = user_id_context.get() # type: ignore
+    trace_id: Optional[str] = trace_id_context.get() # type: ignore
+    
+    logger.info(f"Attempting to delegate to '{agent_name}' with query: '{query}' (User: {user_id}, Trace: {trace_id})")
 
     # Send a status update via the orchestrator's TaskUpdater (if available)
-    updater = task_updater_context.get()
+    updater: Optional[Any] = task_updater_context.get()
     if updater:
         try:
             delegation_msg = f"Delegating to {agent_name} with query: '{query}'"
@@ -138,15 +154,20 @@ async def delegate_to_specialist_agent(agent_name: str, query: str) -> str:
             relative_card_path="/v1/card",
         )
         
+        # Prepare metadata with User ID and Trace ID
+        msg_metadata: Dict[str, str] = {"user_id": user_id}
+        if trace_id:
+            msg_metadata[TRACEABILITY_EXTENSION_KEY] = trace_id
+        
         message = Message(
             message_id=str(uuid.uuid4()),
             role=Role.user,
             parts=[Part(root=TextPart(text=query))],
-            metadata={"user_id": user_id}  # Pass user_id in metadata
+            metadata=msg_metadata  # Pass updated metadata
         )
         
         # 1. Send the initial message to start the task
-        initial_response = None
+        initial_response: Union[Task, Message, None] = None
         async for event in client.send_message(message):
             if isinstance(event, tuple): # A ClientEvent is a (Task, Update) tuple
                 initial_response = event[0]
@@ -157,7 +178,7 @@ async def delegate_to_specialist_agent(agent_name: str, query: str) -> str:
         if not isinstance(initial_response, Task):
             return f"Error: Did not receive a valid Task object to start. Got: {type(initial_response)}"
 
-        task_id = initial_response.id
+        task_id: str = initial_response.id
         logger.info(f"Task received with ID: {task_id} and status: {initial_response.status.state}.")
 
         # 2. Process the final task
@@ -167,8 +188,11 @@ async def delegate_to_specialist_agent(agent_name: str, query: str) -> str:
             return response_text
         else:
             error_message = f"Task failed with state: {initial_response.status.state}."
-            if initial_response.status.message:
-                 error_message += f" Reason: {initial_response.status.message.parts[0].root.text}"
+            if initial_response.status.message and initial_response.status.message.parts:
+                 # Safely access text from the message parts
+                 text_parts = [p.root.text for p in initial_response.status.message.parts if p.root.text]
+                 if text_parts:
+                    error_message += f" Reason: {' '.join(text_parts)}"
             return error_message
 
     except Exception as e:

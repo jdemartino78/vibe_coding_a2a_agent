@@ -1,5 +1,5 @@
-# deploy_weather_agent.py
-# This script deploys the Weather Agent to Google Cloud's Vertex AI Agent Engine.
+# deploy_orchestrator.py
+# This script deploys the Orchestrator Agent to Google Cloud's Vertex AI Agent Engine.
 
 import os
 import vertexai
@@ -13,9 +13,11 @@ from a2a.types import TransportProtocol, AgentCard
 from google.auth import default
 from google.auth.transport.requests import Request as AuthRequest
 
-# Import the Agent Card and Agent Executor specific to the Weather Agent
-from specialized_agents.weather_agent.weather_agent_card import weather_agent_card
-from specialized_agents.weather_agent.weather_agent_executor import WeatherAgentExecutor
+# Import the Agent Card and Agent Executor specific to the Orchestrator Agent
+from orchestrator.card import orchestrator_card
+from orchestrator.executor import OrchestratorAgentExecutor
+from shared.custom_context_builder import CustomCallContextBuilder
+from shared.database.connection import build_database_task_store
 
 # Import the A2aAgent class from Vertex AI SDK for deployment
 from vertexai.preview.reasoning_engines import A2aAgent
@@ -42,7 +44,7 @@ def get_bearer_token() -> str | None:
 
 # Determine the project root and construct the path to the .env file
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..', '..', '..'))
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..', '..'))
 DOTENV_PATH = os.path.join(PROJECT_ROOT, '.env')
 
 # Load environment variables from the root .env file
@@ -56,9 +58,10 @@ LOCATION = os.getenv("LOCATION", "us-central1") # Default to 'us-central1' if no
 BUCKET_NAME = os.getenv("BUCKET_NAME")
 BUCKET_URI = f"gs://{BUCKET_NAME}"
 
-# The URL of the previously deployed Weather MCP server (Cloud Run service)
-# This is a critical dependency for the Weather Agent to function.
-WEA_MCP_SERVER_URL = os.getenv("WEA_MCP_SERVER_URL")
+# The URLs of the previously deployed Cocktail and Weather Agents
+# These are critical dependencies for the Orchestrator Agent to function.
+COCKTAIL_AGENT_URL = os.getenv("COCKTAIL_AGENT_URL")
+WEA_AGENT_URL = os.getenv("WEA_AGENT_URL")
 
 # Validate essential environment variables
 if not PROJECT_ID:
@@ -67,14 +70,17 @@ if not PROJECT_NUMBER:
     raise ValueError("PROJECT_NUMBER environment variable is not set. Please set it in your .env file.")
 if not BUCKET_NAME:
     raise ValueError("BUCKET_NAME environment variable is not set. Please set it in your .env file.")
-if not WEA_MCP_SERVER_URL:
-    raise ValueError("WEA_MCP_SERVER_URL environment variable is not set. Please provide the URL of the deployed weather MCP server in your .env file.")
+if not COCKTAIL_AGENT_URL:
+    raise ValueError("COCKTAIL_AGENT_URL environment variable is not set. Please deploy the Cocktail Agent first.")
+if not WEA_AGENT_URL:
+    raise ValueError("WEA_AGENT_URL environment variable is not set. Please deploy the Weather Agent first.")
 
 logger.info(f"Using Project ID: {PROJECT_ID}")
 logger.info(f"Using Project Number: {PROJECT_NUMBER}")
 logger.info(f"Using Location: {LOCATION}")
 logger.info(f"Using Staging Bucket: {BUCKET_URI}")
-logger.info(f"Using Weather MCP Server URL:. {WEA_MCP_SERVER_URL}")
+logger.info(f"Using Cocktail Agent URL: {COCKTAIL_AGENT_URL}")
+logger.info(f"Using Weather Agent URL: {WEA_AGENT_URL}")
 
 # --- Initialize Vertex AI Session ---
 # This sets up the connection to Google Cloud's Vertex AI services.
@@ -92,15 +98,14 @@ client = vertexai.Client(
 )
 
 # --- Agent Engine ID Management ---
-# We check if an Agent Engine ID for the Weather Agent already exists.
+# We check if an Agent Engine ID for the Orchestrator Agent already exists.
 # If not, we create a new one. This ID is crucial for managing the deployed agent.
-weather_agent_engine_id = os.getenv("WEATHER_AGENT_ENGINE_ID")
-remote_a2a_agent = None
+orchestrator_agent_engine_id = os.getenv("ORCHESTRATOR_AGENT_ENGINE_ID")
 
 # Base configuration for the Agent Engine resource
 agent_engine_config={
-    "display_name": f"{weather_agent_card.name}-MemoryBank",
-    "description": weather_agent_card.description,
+    "display_name": f"{orchestrator_card.name}-MemoryBank",
+    "description": orchestrator_card.description,
     "http_options": {
         "base_url": f"https://{LOCATION}-aiplatform.googleapis.com",
         "api_version": "v1beta1",
@@ -108,17 +113,35 @@ agent_engine_config={
     "staging_bucket": BUCKET_URI,
 }
 
-if not weather_agent_engine_id:
-    logger.info("WEATHER_AGENT_ENGINE_ID not found. Creating a new Agent Engine resource.")
+if not orchestrator_agent_engine_id:
+    logger.info("ORCHESTRATOR_AGENT_ENGINE_ID not found. Creating a new Agent Engine resource.")
     
-    weather_memory_config = {
+    orchestrator_memory_config = {
         "memory_topics": [
-            {"custom_memory_topic": {"label": "location", "description": "city and state mentioned in the conversation"}},
-            {"custom_memory_topic": {"label": "weather_forecast", "description": "weather forecast from MCP server"}},
+            {
+                "custom_memory_topic": {
+                    "label": "task_delegation",
+                    "description": "Information about tasks delegated to specialized agents",
+                }
+            },
+            {
+                "custom_memory_topic": {
+                    "label": "agent_routing",
+                    "description": "Information about which agents were selected for which types of queries",
+                }
+            },
             {"managed_memory_topic": {"managed_topic_enum": "USER_PERSONAL_INFO"}},
             {"managed_memory_topic": {"managed_topic_enum": "USER_PREFERENCES"}},
-            {"managed_memory_topic": {"managed_topic_enum": "KEY_CONVERSATION_DETAILS"}},
-            {"managed_memory_topic": {"managed_topic_enum": "EXPLICIT_INSTRUCTIONS"}},
+            {
+                "managed_memory_topic": {
+                    "managed_topic_enum": "KEY_CONVERSATION_DETAILS"
+                }
+            },
+            {
+                "managed_memory_topic": {
+                    "managed_topic_enum": "EXPLICIT_INSTRUCTIONS"
+                }
+            },
         ],
     }
     
@@ -128,23 +151,25 @@ if not weather_agent_engine_id:
             "generation_config": {
                 "model": f"projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/gemini-2.5-flash"
             },
-            "customization_configs": [weather_memory_config],
+            "customization_configs": [orchestrator_memory_config],
         }
     }
     
     # Create the resource without the agent code
     agent_engine_resource = client.agent_engines.create(config=creation_config)
-    weather_agent_engine_id = agent_engine_resource.api_resource.name.split('/')[-1]
-    set_key(DOTENV_PATH, "WEATHER_AGENT_ENGINE_ID", weather_agent_engine_id)
-    logger.info(f"Newly created WEATHER_AGENT_ENGINE_ID: {weather_agent_engine_id}")
+    orchestrator_agent_engine_id = agent_engine_resource.api_resource.name.split('/')[-1]
+    set_key(DOTENV_PATH, "ORCHESTRATOR_AGENT_ENGINE_ID", orchestrator_agent_engine_id)
+    logger.info(f"Newly created ORCHESTRATOR_AGENT_ENGINE_ID: {orchestrator_agent_engine_id}")
 
 # --- Now, with a valid ID, define the A2A Agent and deploy the code ---
-logger.info(f"Using WEATHER_AGENT_ENGINE_ID: {weather_agent_engine_id}")
+logger.info(f"Using ORCHESTRATOR_AGENT_ENGINE_ID: {orchestrator_agent_engine_id}")
 
 a2a_agent = A2aAgent(
-    agent_card=weather_agent_card,
-    agent_executor_builder=WeatherAgentExecutor,
-    agent_executor_kwargs={"agent_engine_id": weather_agent_engine_id},
+    agent_card=orchestrator_card,
+    agent_executor_builder=OrchestratorAgentExecutor,
+    agent_executor_kwargs={"agent_engine_id": orchestrator_agent_engine_id},
+    task_store_builder=build_database_task_store,
+    task_store_kwargs={},
 )
 
 # Configuration for deploying the agent code
@@ -158,21 +183,25 @@ agent_code_config.update({
         "google-auth-oauthlib>=1.2.2",
         "google-auth[openid]>=2.40.3",
         "google-genai>=1.36.0",
+        "google-cloud-alloydb-connector[asyncpg]",
+        "google-cloud-secret-manager",
     ],
     "env_vars": {
-        "WEA_MCP_SERVER_URL": WEA_MCP_SERVER_URL,
+        "COCKTAIL_AGENT_URL": COCKTAIL_AGENT_URL,
+        "WEA_AGENT_URL": WEA_AGENT_URL,
         "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY": "true",
         "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT": "true",
         "PROJECT_ID": PROJECT_ID,
-        "LOCATION": LOCATION,
+        "LOCATION": LOCATION
     },
-    "extra_packages": ["specialized_agents/weather_agent", "shared"]
+    "extra_packages": ["orchestrator", "shared"]
 })
 
 agent_engine_resource_name = (
-    f"projects/{PROJECT_NUMBER}/locations/{LOCATION}/reasoningEngines/{weather_agent_engine_id}"
+    f"projects/{PROJECT_NUMBER}/locations/{LOCATION}/reasoningEngines/{orchestrator_agent_engine_id}"
 )
-logger.info(f"Attempting to deploy Weather Agent to Agent Engine: {agent_engine_resource_name}")
+logger.info(f"Attempting to deploy Orchestrator Agent code to Agent Engine: {agent_engine_resource_name}")
+
 remote_a2a_agent = client.agent_engines.update(
     name=agent_engine_resource_name,
     agent=a2a_agent,
@@ -194,21 +223,19 @@ remote_a2a_agent_retrieved = client.agent_engines.get(
 async def get_agent_card_async(agent_engine_obj) -> AgentCard:
     return await agent_engine_obj.handle_authenticated_agent_card()
 
-weather_agent_card_deployed = asyncio.run(get_agent_card_async(remote_a2a_agent_retrieved))
+orchestrator_agent_card_deployed = asyncio.run(get_agent_card_async(remote_a2a_agent_retrieved))
 
 # Extract the URL from the deployed agent card
-weather_agent_url = weather_agent_card_deployed.url
+orchestrator_agent_url = orchestrator_agent_card_deployed.url
 
 # Normalize the URL to ensure it has the correct /a2a suffix for client compatibility
-weather_agent_url = weather_agent_url.rstrip('/')
-if not weather_agent_url.endswith('/a2a'):
-    weather_agent_url += '/a2a'
+orchestrator_agent_url = orchestrator_agent_url.rstrip('/')
+if not orchestrator_agent_url.endswith('/a2a'):
+    orchestrator_agent_url += '/a2a'
 
-
-logger.info(f"Weather Agent deployed successfully. Normalized URL: {weather_agent_url}")
-logger.info(f"Agent Engine ID: {weather_agent_engine_id}")
+logger.info(f"Orchestrator Agent deployed successfully. Normalized URL: {orchestrator_agent_url}")
+logger.info(f"Agent Engine ID: {orchestrator_agent_engine_id}")
 
 # Save the deployed agent's URL to the .env file.
-# This URL will be needed by the Hosting Agent.
-set_key(DOTENV_PATH, "WEA_AGENT_URL", weather_agent_url)
-logger.info("WEA_AGENT_URL saved to .env file.")
+set_key(DOTENV_PATH, "ORCHESTRATOR_AGENT_URL", orchestrator_agent_url)
+logger.info("ORCHESTRATOR_AGENT_URL saved to .env file.")

@@ -26,4 +26,4 @@ dependencies = [ "a2a-sdk>=0.3.12",
 ]
 
 [tool.setuptools.packages.find]
-include = ["cocktail_agent*", "common*", "hosting_agent*", "weather_agent*", "shared*"]
+include = ["orchestrator*", "specialized*", "shared*"]

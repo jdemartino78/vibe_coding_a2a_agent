@@ -138,34 +138,38 @@ Open the URL for your frontend (either the local `http://127.0.0.1:8080`, the Cl
 Here are several test cases, ranging from simple to complex, to validate the full capabilities of the agent.
 
 **Test 1: Simple Delegation**
-
 These queries test if the orchestrator can correctly route a single request to the appropriate specialized agent.
-
 -   `Please get weather forecast for New York`
 -   `What ingredients are in a Margarita?`
 
-**Test 2: Multi-Turn Conversation & Context**
+**Test 2: Vibe Checks (Semantic Mapping)**
+These queries test the new "Vibe Mapping" logic where abstract requests are translated into concrete ingredient searches.
+-   `I'm feeling cold and gloomy. Recommend a warming drink.` (Should suggest Whiskey/Rum/Hot drinks)
+-   `It's a hot summer party! What should we serve?` (Should suggest Tequila/Gin/Fruity drinks)
+-   `I want something sophisticated and classy.` (Should suggest Martinis or Old Fashioneds)
 
+**Test 3: Weather-Influenced Cocktails (Contextual Synthesis)**
+These queries require the Orchestrator to fetch weather first, then use that context to query the Cocktail Agent.
+-   `What is the weather in Seattle, WA, and what cocktail would be good for it?`
+-   `I'm in Miami. Check the forecast and suggest a drink that matches the vibe.`
+
+**Test 4: Multi-Turn Conversation & Memory**
 This sequence tests the agent's conversational memory, which is persisted in the AlloyDB session store.
+1.  **First Turn:** `Give me a random cocktail.`
+2.  **Second Turn:** `Great, what's the weather in a good city to drink that?`
+    *The orchestrator should infer a relevant city (e.g., New Orleans for a Sazerac) and check its weather.*
 
-1.  **First Turn:** Ask for a cocktail.
-    > `Give me a random cocktail.`
-2.  **Second Turn:** The agent will respond with a cocktail (e.g., a "Royal Flush"). Now, ask a follow-up question that relies on the previous context.
-    > `Great, what's the weather in a good city to drink that?`
+**Test 5: Complex Reasoning & Origins**
+This query requires extracting a specific detail (origin) to drive the next step.
+-   `What is a Mojito, and what is the weather like in the city where it was invented?`
+    *(Should identify Havana or Cuba -> Check Weather -> Synthesize)*
 
-The orchestrator should use its reasoning to infer a relevant city (e.g., Las Vegas for a Royal Flush) and then call the Weather Agent. This proves the session is being correctly maintained between turns.
-
-**Test 3: Complex Reasoning and Information Synthesis**
-
-This single query requires the agent to perform a multi-step plan, extract information from one tool's output, and use it as the input for another tool.
-
-> `I'm planning a trip. Give me a classic, sophisticated cocktail to drink, and tell me what the weather is like right now in the city where that drink was invented.`
-
-To answer this, the agent must:
-1.  Call the **Cocktail Agent** to find a classic cocktail.
-2.  **Extract the city of origin** from the cocktail's data (e.g., "Louisville").
-3.  Call the **Weather Agent** using the extracted city.
-4.  **Synthesize** both results into a single, helpful answer.
+**Test 6: Error Handling & Boundaries**
+Test the system's resilience and configured limitations.
+-   `What is the weather in Paris, France?`
+    *(Should politely decline because the Weather Agent is limited to the US)*
+-   `Get weather for Narnia.`
+    *(Should handle the "Location not found" error gracefully)*
 
 ## What We Just Built
 Congratulations! You have successfully built a stateful multi-agent system.

@@ -12,16 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+This module provides the Session ID Translation Layer.
+
+It addresses the fundamental mismatch between the A2A Protocol's `context_id`
+(a client-provided UUID for conversations) and Vertex AI Agent Engine's internally
+generated, opaque session resource names (e.g., `projects/.../sessions/abc-789`).
+
+Without this layer, every A2A message with a consistent `context_id` would
+result in the creation of a new, blank Vertex AI session.
+
+This module maps the `(user_id, context_id)` composite key to the corresponding
+Vertex AI `vertex_session_name`, enabling long-term memory and identity persistence
+across multi-turn conversations.
+"""
+
 import sqlalchemy
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 # Define the table structure for storing session mappings.
-# This metadata object will be used to create the table if it doesn't exist.
+# We use a composite primary key of (user_id, context_id) for better normalization.
+# Changed table name to 'session_mappings_v2' to force schema update.
 metadata = sqlalchemy.MetaData()
 session_mappings_table = sqlalchemy.Table(
-    "session_mappings",
+    "session_mappings_v2",
     metadata,
-    sqlalchemy.Column("session_key", sqlalchemy.String(255), primary_key=True),
+    sqlalchemy.Column("user_id", sqlalchemy.String(255), primary_key=True),
+    sqlalchemy.Column("context_id", sqlalchemy.String(255), primary_key=True),
     sqlalchemy.Column("vertex_session_name", sqlalchemy.String(255), nullable=False),
     sqlalchemy.Column(
         "last_updated",
@@ -34,7 +51,7 @@ session_mappings_table = sqlalchemy.Table(
 
 async def initialize_session_store(engine: AsyncEngine):
     """
-    Creates the 'session_mappings' table in the database if it does not already exist.
+    Creates the 'session_mappings_v2' table in the database if it does not already exist.
 
     Args:
         engine: The SQLAlchemy AsyncEngine to use for the connection.
@@ -43,45 +60,51 @@ async def initialize_session_store(engine: AsyncEngine):
         await conn.run_sync(metadata.create_all)
 
 
-async def get_session_mapping(engine: AsyncEngine, key: str) -> str | None:
+async def get_session_mapping(engine: AsyncEngine, user_id: str, context_id: str) -> str | None:
     """
-    Retrieves the Vertex AI session name for a given key from the database.
+    Retrieves the Vertex AI session name for a given user_id and context_id.
 
     Args:
         engine: The SQLAlchemy AsyncEngine to use for the connection.
-        key: The key (e.g., 'user_id-context_id') to look up.
+        user_id: The ID of the user.
+        context_id: The ID of the A2A context.
 
     Returns:
         The Vertex AI session name if found, otherwise None.
     """
     async with engine.connect() as conn:
         stmt = sqlalchemy.select(session_mappings_table.c.vertex_session_name).where(
-            session_mappings_table.c.session_key == key
+            sqlalchemy.and_(
+                session_mappings_table.c.user_id == user_id,
+                session_mappings_table.c.context_id == context_id
+            )
         )
         result = await conn.execute(stmt)
         row = result.fetchone()
         return row[0] if row else None
 
 
-async def set_session_mapping(engine: AsyncEngine, key: str, vertex_session_name: str):
+async def set_session_mapping(engine: AsyncEngine, user_id: str, context_id: str, vertex_session_name: str):
     """
-    Saves or updates the mapping between a key and a Vertex AI session name in the database.
+    Saves or updates the mapping between user/context and a Vertex AI session name.
 
     Args:
         engine: The SQLAlchemy AsyncEngine to use for the connection.
-        key: The key (e.g., 'user_id-context_id') to save.
+        user_id: The ID of the user.
+        context_id: The ID of the A2A context.
         vertex_session_name: The Vertex AI session name to store.
     """
     async with engine.connect() as conn:
         # Use an "upsert" operation to either insert a new row or update an existing one.
-        # This is more robust than separate INSERT and UPDATE statements.
         from sqlalchemy.dialects.postgresql import insert
 
         stmt = insert(session_mappings_table).values(
-            session_key=key, vertex_session_name=vertex_session_name
+            user_id=user_id,
+            context_id=context_id,
+            vertex_session_name=vertex_session_name
         )
         stmt = stmt.on_conflict_do_update(
-            index_elements=["session_key"],
+            index_elements=["user_id", "context_id"],
             set_=dict(vertex_session_name=vertex_session_name),
         )
         await conn.execute(stmt)

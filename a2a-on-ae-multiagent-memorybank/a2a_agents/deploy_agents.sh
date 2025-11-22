@@ -32,12 +32,12 @@ set +a
 
 deploy_cocktail() {
   echo "Deploying Cocktail Agent..."
-  python -m specialized_agents.cocktail_agent.deploy_cocktail_agent
+  python -m specialized.cocktail.deploy
 }
 
 deploy_weather() {
   echo "Deploying Weather Agent..."
-  python -m specialized_agents.weather_agent.deploy_weather_agent
+  python -m specialized.weather.deploy
 }
 
 deploy_orchestrator() {
@@ -46,7 +46,7 @@ deploy_orchestrator() {
   source "$PROJECT_ROOT/.env"
   set +a
   echo "Deploying Orchestrator Agent..."
-  python -m orchestrator.deploy_orchestrator
+  python -m orchestrator.deploy
 }
 
 if [ "$#" -eq 0 ]; then
