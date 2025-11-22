@@ -28,11 +28,11 @@ from a2a.utils.errors import ServerError
 from dotenv import load_dotenv
 
 # ADK Imports
-from google.adk import Runner, App
+from google.adk import Runner
+from google.adk.apps.app import App, EventsCompactionConfig
 from google.adk.agents import LlmAgent
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.agents.context_cache_config import ContextCacheConfig
-from google.adk.apps.app import EventsCompactionConfig
 from google.adk.artifacts import InMemoryArtifactService
 from google.adk.sessions import VertexAiSessionService
 from google.adk.tools.preload_memory_tool import PreloadMemoryTool
