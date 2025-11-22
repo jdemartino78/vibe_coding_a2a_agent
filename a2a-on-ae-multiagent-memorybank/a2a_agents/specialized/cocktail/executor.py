@@ -12,22 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-import json
 import logging
-from typing import Dict
-from json import JSONDecodeError
+from typing import Dict, Optional
 from dotenv import load_dotenv
-from pydantic import ValidationError
-
-from a2a.server.agent_execution import RequestContext
-from a2a.server.events import EventQueue
-from a2a.server.tasks import TaskUpdater
-from a2a.types import TaskState, TextPart
-from a2a.utils import new_agent_text_message
 
 from shared.base_executor import BaseMcpAgentExecutor
-from shared.models import CocktailData, validate_and_parse
+from shared.models import CocktailData
 
 # Set logging
 logging.getLogger().setLevel(logging.INFO)
@@ -73,7 +63,7 @@ The user may ask for drinks based on "vibes" or weather. You MUST translate thes
     ]
   }
   ```
-"""
+""
 
 COCKTAIL_AGENT_CONFIG: Dict = {
     "name": "cocktail_agent",
@@ -87,42 +77,9 @@ COCKTAIL_AGENT_CONFIG: Dict = {
 class CocktailAgentExecutor(BaseMcpAgentExecutor):
     """Agent Executor for cocktail-related queries that returns structured JSON."""
 
+    def __init__(self, agent_engine_id: Optional[str] = None) -> None:
+        super().__init__(agent_engine_id=agent_engine_id, output_schema=CocktailData)
+
     def get_agent_config(self) -> Dict:
         """Return cocktail agent configuration."""
         return COCKTAIL_AGENT_CONFIG
-
-    async def execute(
-        self,
-        context: RequestContext,
-        event_queue: EventQueue,
-    ) -> None:
-        """
-        Overrides the base execute method to perform an extra validation step.
-        It runs the standard MCP agent logic, then validates the raw text output
-        against the CocktailData Pydantic schema and returns the validated
-        JSON as the final response.
-        """
-        # 1. Run the base executor to get the raw text output from the LLM
-        raw_text_output = await super().execute_and_get_text_output(context, event_queue)
-        updater = TaskUpdater(event_queue, context.task_id, context.context_id)
-
-        # 2. Validate and parse the raw output into structured JSON
-        logging.info(f"Raw LLM output for validation: {raw_text_output}")
-        try:
-            validated_data = validate_and_parse(raw_text_output, CocktailData)
-            final_json_output = json.dumps(validated_data, indent=2)
-
-            # 3. Return the validated JSON as an artifact
-            await updater.add_artifact(
-                [TextPart(text=final_json_output)],
-                name="answer",
-            )
-            await updater.complete()
-            logging.info("Successfully returned validated JSON for Cocktail Agent.")
-
-        except (JSONDecodeError, ValidationError) as e:
-            # Assumed to be a clarifying question, pass it back to the user
-            logging.info("Output is not JSON, treating as a clarifying question and setting task to input_required.")
-            await updater.update_status(
-                TaskState.input_required, message=new_agent_text_message(raw_text_output)
-            )

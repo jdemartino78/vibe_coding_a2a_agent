@@ -12,6 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+This module provides the Session ID Translation Layer.
+
+It addresses the fundamental mismatch between the A2A Protocol's `context_id`
+(a client-provided UUID for conversations) and Vertex AI Agent Engine's internally
+generated, opaque session resource names (e.g., `projects/.../sessions/abc-789`).
+
+Without this layer, every A2A message with a consistent `context_id` would
+result in the creation of a new, blank Vertex AI session.
+
+This module maps the `(user_id, context_id)` composite key to the corresponding
+Vertex AI `vertex_session_name`, enabling long-term memory and identity persistence
+across multi-turn conversations.
+"""
+
 import sqlalchemy
 from sqlalchemy.ext.asyncio import AsyncEngine
 

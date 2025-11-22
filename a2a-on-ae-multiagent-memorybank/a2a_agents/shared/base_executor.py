@@ -15,8 +15,11 @@
 import logging
 import os
 import time
+import json
 from abc import ABC, abstractmethod
-from typing import Dict, NoReturn, Optional
+from typing import Dict, NoReturn, Optional, Type
+from json import JSONDecodeError
+from pydantic import ValidationError, BaseModel
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
@@ -41,6 +44,7 @@ from google.genai import types
 from google.oauth2 import id_token as google_id_token
 from shared.tools import task_updater_context
 from shared.services import PersistentVertexAiMemoryBankService
+from shared.models import validate_and_parse
 
 # Imports for MemoryBankCustomizationConfig
 from vertexai._genai.types import MemoryBankCustomizationConfig as CustomizationConfig
@@ -168,24 +172,25 @@ class BaseMcpAgentExecutor(AgentExecutor, ABC):
     3. Session management for multi-turn conversations
     4. Error handling and recovery
     5. MCP authentication and token management
+    6. Optional JSON validation of agent output
     """
     # In-memory cache for mapping A2A context_id to ADK session objects.
-    # Note: For a production system, a more robust, distributed cache like Redis
-    # or Memorystore would be necessary to handle multiple server instances and
-    # to manage memory by evicting old sessions. For this demo, a simple
-    # dictionary is sufficient.
     CONTEXT_ID_TO_SESSION_MAP = {}
 
-    def __init__(self, agent_engine_id: str = None) -> None:
+    def __init__(self, agent_engine_id: str = None, output_schema: Optional[Type[BaseModel]] = None) -> None:
         """Initialize with lazy loading pattern.
 
         Args:
             agent_engine_id: Optional agent engine ID. If not provided, creates a new one.
+            output_schema: Optional Pydantic model to validate the agent's text output.
+                           If provided, the executor will attempt to parse the output as JSON
+                           and validate it against this schema.
         """
         self.agent = None
         self.runner = None
         self.token_manager = None
         self.agent_engine_id = agent_engine_id
+        self.output_schema = output_schema
 
         self.project_id = os.environ.get("PROJECT_ID")
         self.location = os.environ.get("LOCATION")
@@ -286,14 +291,6 @@ class BaseMcpAgentExecutor(AgentExecutor, ABC):
             async def auto_save_session_to_memory_callback(callback_context):
                 """
                 Callback to save conversation session to Vertex AI Memory Bank.
-
-                This callback is triggered after the agent completes processing.
-                It extracts conversation events from the session and sends them to
-                the Memory Bank service for processing. The service generates semantic
-                memories that can be retrieved in future conversations.
-
-                Memory topics are configured in the agent engine (see get_agent_engine method).
-                Subclasses can override get_agent_engine to customize memory topics.
                 """
                 memory_callback_start_time = time.time()
                 session = callback_context._invocation_context.session
@@ -332,15 +329,10 @@ class BaseMcpAgentExecutor(AgentExecutor, ABC):
             )
 
             # The Runner orchestrates the agent execution
-            # It manages the LLM calls, tool execution, and state
             self.runner = Runner(
                 app_name=self.agent.name,
                 agent=self.agent,
-                # In-memory services for simplicity
-                # In production, you might use persistent storage
                 artifact_service=InMemoryArtifactService(),
-                # session_service=InMemorySessionService(),
-                # memory_service=InMemoryMemoryService(),
                 session_service=my_session_service,
                 memory_service=my_memory_service,
             )
@@ -351,15 +343,32 @@ class BaseMcpAgentExecutor(AgentExecutor, ABC):
         event_queue: EventQueue,
     ) -> None:
         """
-        Default implementation that runs the agent and returns the raw text output.
-        Specialized executors can override this to add validation or formatting.
+        Executes the agent logic. If an output_schema was provided, validates
+        the output against it.
         """
         try:
             # 1. Run the agent and get the final text output
             answer = await self.execute_and_get_text_output(context, event_queue)
-
-            # 2. Return the answer as a standard artifact
+            
             updater = TaskUpdater(event_queue, context.task_id, context.context_id)
+
+            # 2. Optional: Validate output if schema provided
+            if self.output_schema:
+                logging.info(f"Raw LLM output for validation: {answer}")
+                try:
+                    validated_data = validate_and_parse(answer, self.output_schema)
+                    # Replace raw answer with formatted JSON
+                    answer = json.dumps(validated_data, indent=2)
+                    logging.info(f"Successfully validated output for {self.output_schema.__name__}.")
+                except (JSONDecodeError, ValidationError):
+                    # Validation failed, assume it's a clarifying question
+                    logging.info("Output is not valid JSON, treating as a clarifying question and setting task to input_required.")
+                    await updater.update_status(
+                        TaskState.input_required, message=new_agent_text_message(answer)
+                    )
+                    return # Stop execution here
+
+            # 3. Return the answer (validated JSON or raw text) as a standard artifact
             await updater.add_artifact(
                 [TextPart(text=answer)],
                 name="answer",
@@ -367,7 +376,7 @@ class BaseMcpAgentExecutor(AgentExecutor, ABC):
             await updater.complete()
 
         except Exception as e:
-            logging.error(f"Error during base execution: {e!s}", exc_info=True)
+            logging.error(f"Error during execution: {e!s}", exc_info=True)
             updater = TaskUpdater(event_queue, context.task_id, context.context_id)
             await updater.update_status(
                 TaskState.failed, message=new_agent_text_message(f"Error: {e!s}")
@@ -381,9 +390,6 @@ class BaseMcpAgentExecutor(AgentExecutor, ABC):
     ) -> str:
         """
         Processes a user query, runs the ADK agent, and returns the raw text output.
-        This method contains the core logic for agent interaction, which can be
-        reused by subclasses that need to perform additional processing (e.g., JSON validation)
-        on the raw output before sending the final response.
         """
         start_time = time.time()
         # Initialize agent on first call
