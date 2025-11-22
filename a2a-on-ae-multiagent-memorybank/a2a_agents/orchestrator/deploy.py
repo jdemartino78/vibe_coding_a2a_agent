@@ -7,16 +7,13 @@ from google.genai import types
 from dotenv import load_dotenv, set_key
 import logging
 import asyncio
-import httpx
-from a2a.client import ClientConfig, ClientFactory
-from a2a.types import TransportProtocol, AgentCard
+from a2a.types import AgentCard
 from google.auth import default
 from google.auth.transport.requests import Request as AuthRequest
 
 # Import the Agent Card and Agent Executor specific to the Orchestrator Agent
 from orchestrator.card import orchestrator_card
 from orchestrator.executor import OrchestratorAgentExecutor
-from shared.custom_context_builder import CustomCallContextBuilder
 from shared.database.connection import build_database_task_store
 
 # Import the A2aAgent class from Vertex AI SDK for deployment

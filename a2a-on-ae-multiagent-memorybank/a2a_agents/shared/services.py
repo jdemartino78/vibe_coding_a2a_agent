@@ -13,8 +13,6 @@
 # limitations under the License.
 
 import logging
-import os
-import time
 
 from google import adk
 from google.adk.memory import VertexAiMemoryBankService, base_memory_service

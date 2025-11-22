@@ -27,11 +27,9 @@ from a2a.server.tasks import TaskUpdater
 from a2a.types import Role, TaskState, TextPart, UnsupportedOperationError
 from a2a.utils import new_agent_text_message
 from a2a.utils.errors import ServerError
-from google import adk
 from google.adk import Runner
 from google.adk.agents import LlmAgent
 from google.adk.artifacts import InMemoryArtifactService
-from google.adk.memory import VertexAiMemoryBankService, base_memory_service
 from google.adk.sessions import VertexAiSessionService
 import vertexai # Added import for vertexai
 from google.adk.tools.mcp_tool.mcp_toolset import (
@@ -47,12 +45,6 @@ from shared.services import PersistentVertexAiMemoryBankService
 from shared.models import validate_and_parse
 
 # Imports for MemoryBankCustomizationConfig
-from vertexai._genai.types import MemoryBankCustomizationConfig as CustomizationConfig
-from vertexai._genai.types import MemoryBankCustomizationConfigMemoryTopic as MemoryTopic
-from vertexai._genai.types import (
-    MemoryBankCustomizationConfigMemoryTopicManagedMemoryTopic as ManagedMemoryTopic,
-)
-from vertexai._genai.types import ManagedTopicEnum
 from vertexai.preview.reasoning_engines.templates.adk import (
     _default_instrumentor_builder,
 )
@@ -224,7 +216,6 @@ class BaseMcpAgentExecutor(AgentExecutor, ABC):
         Returns:
             str: Agent engine ID
         """
-        import vertexai
 
         client = vertexai.Client(
             project=self.project_id,

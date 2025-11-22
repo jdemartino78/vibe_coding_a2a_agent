@@ -4,7 +4,6 @@ import os
 import logging
 import httpx
 import uuid
-import json
 import asyncio
 import contextvars
 from typing import Any, Dict, Optional, Union
@@ -17,7 +16,6 @@ from a2a.types import (
     TaskState,
     TextPart,
     TransportProtocol,
-    TaskQueryParams,
 )
 from a2a.utils import new_agent_text_message
 from shared.auth_utils import GoogleAuth

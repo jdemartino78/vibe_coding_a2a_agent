@@ -7,9 +7,7 @@ from google.genai import types
 from dotenv import load_dotenv, set_key
 import logging
 import asyncio
-import httpx
-from a2a.client import ClientConfig, ClientFactory
-from a2a.types import TransportProtocol, AgentCard
+from a2a.types import AgentCard
 from google.auth import default
 from google.auth.transport.requests import Request as AuthRequest
 
