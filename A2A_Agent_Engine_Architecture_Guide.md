@@ -69,9 +69,28 @@ We engineered the `ORCHESTRATOR_INSTRUCTION` in `orchestrator/logic.py` to enfor
 2.  **Sequential Execution:** Force the model to call one tool, wait for the result, and *then* call the next.
 3.  **Synthesis:** Only generate the final natural language response after all data is collected.
 
+### D. Shared Utilities & A2A Interoperability
+**Context:** Robust multi-agent systems require common mechanisms for inter-agent communication, context propagation, and secure authentication that are decoupled from individual agent logic.
+
+**The Solution:**
+We centralized these critical components in the `shared/` directory:
+
+*   **`shared/tools.py` (Inter-Agent Communication & Context Propagation):**
+    *   **`delegate_to_specialist_agent`:** This is the primary tool used by the Orchestrator to call specialized agents. It encapsulates the complexities of A2A client communication (e.g., handling non-streaming interactions, task polling).
+    *   **`user_id_context` & `trace_id_context`:** These `contextvars` (context variables) are crucial for propagating user identity and distributed trace IDs across asynchronous calls and agent boundaries. This enables user-specific memory retrieval and end-to-end observability in logs.
+
+*   **`shared/auth_utils.py` (A2A Client Authentication):**
+    *   Provides the `GoogleAuth` class, which integrates with Google Cloud's authentication mechanisms. This ensures that when the Orchestrator (or any agent acting as a client) calls another agent, the communication is securely authenticated using appropriate service account credentials.
+
+*   **`shared/custom_context_builder.py` (Custom Context Injection):**
+    *   This module allows for injecting custom data or services (like the database engine) into the ADK's `CallbackContext` for specialized agents. This is used in `BaseMcpAgentExecutor` to provide agents with necessary runtime dependencies in a clean, testable manner.
+
+**Why it matters:**
+This centralization promotes code reuse, reduces boilerplate, and ensures consistent implementation of fundamental cross-cutting concerns (like authentication, logging context, and inter-agent calls) across the entire multi-agent system. It makes the system more maintainable, scalable, and observable.
+
 ---
 
-## 4. Lessons Learned & Framework Specifics
+## 5. Lessons Learned & Framework Specifics
 
 ### The `task_store_builder` Constraint
 *   **Issue:** By default, `A2aAgent` uses `InMemoryTaskStore`. If you deploy without explicitly passing a `task_store_builder`, your data disappears on every container restart.
@@ -92,7 +111,7 @@ We engineered the `ORCHESTRATOR_INSTRUCTION` in `orchestrator/logic.py` to enfor
 
 ---
 
-## 5. Future Improvements / To-Do
+## 6. Future Improvements / To-Do
 
 *   **Linting Pipeline:** Integrate `flake8` or `ruff` into `deploy_agents.sh` to catch `NameError` (like the missing `logger`) before deployment starts.
 *   **Parallel Execution:** Update the Orchestrator prompt to allow parallel tool calling (e.g., fetch weather AND cocktail recipes simultaneously) to further reduce latency.
