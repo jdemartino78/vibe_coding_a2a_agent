@@ -388,7 +388,9 @@ class OrchestratorAgentExecutor(AgentExecutor):
                 logging.info(f"Orchestrator LLM Raw Output: {llm_output}")
 
                 try:
-                    parsed_output = json.loads(llm_output)
+                    # Clean markdown formatting if present
+                    cleaned_output = self._clean_json_string(llm_output)
+                    parsed_output = json.loads(cleaned_output)
 
                     if "tool_name" in parsed_output and "tool_query" in parsed_output:
                         # It's a tool call
@@ -493,6 +495,19 @@ class OrchestratorAgentExecutor(AgentExecutor):
             answer = answer[len(query):].strip()
 
         return answer
+
+    def _clean_json_string(self, json_str: str) -> str:
+        """Clean markdown code blocks from JSON string."""
+        cleaned = json_str.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        elif cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+            
+        return cleaned.strip()
 
     async def cancel(
         self, context: RequestContext, event_queue: EventQueue
