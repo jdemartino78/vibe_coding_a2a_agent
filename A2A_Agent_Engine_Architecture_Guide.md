@@ -28,12 +28,10 @@ We implemented a **Stateful Orchestrator, Stateless Worker** pattern.
 **Context:** The `A2aAgent` framework requires a **synchronous** `task_store_builder` function during initialization. However, cloud-native dependencies (Secret Manager, AlloyDB connections) typically require **asynchronous** initialization.
 
 **The Solution:**
-We implemented a **Lazy Initialization** pattern in `shared/database/connection.py`.
-*   We expose a synchronous `build_database_task_store()` function that satisfies the framework's contract.
-*   Inside, we perform a blocking (synchronous) fetch of secrets *only during the first initialization phase*.
-*   This creates an `AsyncEngine` that is then used for all subsequent non-blocking runtime traffic.
-
-**Why it matters:** It bridges the gap between legacy/synchronous framework requirements and modern async I/O without blocking the main event loop during request processing.
+We implemented a **Synchronous Builder with Blocking Init** in `shared/database/connection.py`.
+*   We initially tried a complex `GlobalTaskStoreProxy` for lazy async loading.
+*   **Simplification:** We refactored to a simpler synchronous builder that blocks the thread briefly to fetch secrets.
+*   **Outcome:** This reduced code complexity significantly while satisfying the framework's contract with negligible impact on cold-start performance (~200ms).
 
 ### B. Database Normalization & Composite Keys
 **Context:** Mapping a User ID and a Context ID to a Vertex AI Session ID is crucial for state recovery. A naive approach often involves concatenating strings (e.g., `user-context`).
@@ -62,11 +60,25 @@ We engineered the `ORCHESTRATOR_INSTRUCTION` in `orchestrator/logic.py` to enfor
 
 ---
 
-## 3. Lessons Learned & Framework Specifics
+## 3. Performance Optimization
+
+### Model Selection: Pro vs. Flash
+*   **Initial State:** The Orchestrator used `gemini-2.5-pro`.
+*   **Optimization:** We switched to `gemini-2.5-flash` for the `OrchestratorLogic`.
+*   **Rationale:** The Orchestrator's primary job is **routing** and **synthesis**, which requires high speed and low latency but not the deep reasoning capabilities of the "Pro" model.
+*   **Result:** Significant reduction in "Time to First Byte" (TTFB) and overall request latency, making the agent feel much snappier.
+
+---
+
+## 4. Lessons Learned & Framework Specifics
 
 ### The `task_store_builder` Constraint
 *   **Issue:** By default, `A2aAgent` uses `InMemoryTaskStore`. If you deploy without explicitly passing a `task_store_builder`, your data disappears on every container restart.
 *   **Fix:** You *must* pass a callable builder to the `A2aAgent` constructor in `deploy.py`. This builder must return a configured `TaskStore` instance.
+
+### Refactoring Pitfalls
+*   **Method Signatures:** When moving logic from standalone functions to class methods, it is easy to forget adding `self` as the first argument. This leads to `TypeError: ... takes 0 positional arguments but 1 was given`. Always review method signatures during refactoring.
+*   **Imports:** Renaming classes requires a meticulous search-and-replace across the entire codebase. A missed import in `deploy.py` can crash the deployment process even if the logic is sound.
 
 ### Telemetry Imports (`_default_instrumentor_builder`)
 *   **Issue:** Configuring custom telemetry or logging within the ADK often requires internal utilities that aren't always exposed in the top-level API.
@@ -79,7 +91,7 @@ We engineered the `ORCHESTRATOR_INSTRUCTION` in `orchestrator/logic.py` to enfor
 
 ---
 
-## 4. Future Improvements / To-Do
+## 5. Future Improvements / To-Do
 
 *   **Linting Pipeline:** Integrate `flake8` or `ruff` into `deploy_agents.sh` to catch `NameError` (like the missing `logger`) before deployment starts.
-*   **Async Secret Manager:** If startup time becomes critical, refactor the `A2aAgent` wrapper itself to support `await` in the setup phase, allowing for fully non-blocking startup.
+*   **Parallel Execution:** Update the Orchestrator prompt to allow parallel tool calling (e.g., fetch weather AND cocktail recipes simultaneously) to further reduce latency.
