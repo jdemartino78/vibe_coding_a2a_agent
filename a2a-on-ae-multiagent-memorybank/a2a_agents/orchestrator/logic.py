@@ -42,9 +42,9 @@ from vertexai.preview.reasoning_engines.templates.adk import (
 )
 
 # Custom Imports
-from shared.a2a_tools import delegate_to_specialist_agent, user_id_context, task_updater_context
-from shared.adk_base_mcp_agent_executor import PersistentVertexAiMemoryBankService
-from shared.session_store import get_session_mapping, set_session_mapping
+from shared.tools import delegate_to_specialist_agent, user_id_context, task_updater_context
+from shared.base_executor import PersistentVertexAiMemoryBankService
+from shared.database.sessions import get_session_mapping, set_session_mapping
 
 # Set logging
 logging.getLogger().setLevel(logging.INFO)
@@ -213,7 +213,13 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
         raw_query = context.get_user_input()
         logging.info(f"Received raw input: {raw_query}")
         
+        # 1. Fix Context ID: Generate a valid UUID if missing or 'pending_creation'
         context_id = context.context_id
+        if not context_id or context_id == "pending_creation":
+            import uuid
+            context_id = str(uuid.uuid4())
+            logging.info(f"Context ID was '{context.context_id}'. Generated new context_id: {context_id}")
+
         if context.message and context.message.metadata and "user_id" in context.message.metadata:
             user_id = context.message.metadata["user_id"]
         else:
@@ -221,10 +227,25 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
 
         logging.info(f"Executing request for user_id: '{user_id}' with context_id: '{context_id}'")
 
-        updater = TaskUpdater(event_queue, context.task_id, context.context_id)
+        # 2. Prepare Metadata (User ID & Timestamp Extension)
+        import datetime
+        timestamp_key = "github.com/a2aproject/a2a-samples/samples/extensions/timestamp/v1/timestamp"
+        current_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        
+        task_metadata = {
+            "user_id": user_id,
+            timestamp_key: current_time
+        }
+
+        # 3. Initialize Updater with valid context_id
+        updater = TaskUpdater(event_queue, context.task_id, context_id)
 
         if not context.current_task:
-            await updater.submit()
+            # 4. Submit with metadata and description
+            await updater.submit(
+                description=f"Orchestrator handling query for user {user_id}",
+                metadata=task_metadata
+            )
 
         await updater.start_work()
 

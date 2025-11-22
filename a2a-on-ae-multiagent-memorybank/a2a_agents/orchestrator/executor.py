@@ -13,10 +13,10 @@
 # limitations under the License.
 import asyncio
 from a2a.server.agent_execution import AgentExecutor, RequestContext
-from shared.adk_orchestrator_agent import AdkOrchestratorAgentExecutor
+from orchestrator.logic import AdkOrchestratorAgentExecutor
 from shared.custom_context_builder import CustomCallContextBuilder
-from shared.dependencies import get_database_task_store, initialize_dependencies, get_db_engine
-from shared.session_store import initialize_session_store
+from shared.database.connection import get_database_task_store, initialize_dependencies, get_db_engine
+from shared.database.sessions import initialize_session_store
 from typing import Optional
 import logging
 import os
@@ -49,7 +49,7 @@ class OrchestratorAgentExecutor(AgentExecutor):
         self._setup_lock = asyncio.Lock()
         self._agent_engine_id = agent_engine_id
 
-    async def _ensure_setup(self) -> None:
+    async def _ensure_setup() -> None:
         """
         Ensures that the asynchronous setup (database initialization) is completed.
         Uses a lock to prevent race conditions during the first initialization.

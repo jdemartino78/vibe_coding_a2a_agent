@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 import json
 import logging
 from typing import Dict
@@ -25,9 +26,8 @@ from a2a.server.tasks import TaskUpdater
 from a2a.types import TaskState, TextPart
 from a2a.utils import new_agent_text_message
 
-
-from shared.adk_base_mcp_agent_executor import AdkBaseMcpAgentExecutor
-from shared.data_models import WeatherForecastData, validate_and_parse
+from shared.base_executor import AdkBaseMcpAgentExecutor
+from shared.models import CocktailData, validate_and_parse
 
 # Set logging
 logging.getLogger().setLevel(logging.INFO)
@@ -35,51 +35,54 @@ load_dotenv()
 
 # --- AGENT CONFIGURATION ---
 
-UPDATED_WEATHER_AGENT_INSTRUCTION = """
-You are a specialized weather data processing agent. Your single purpose is to take raw, text-based weather forecast data and convert it into a structured JSON object.
+UPDATED_COCKTAIL_AGENT_INSTRUCTION = """
+You are a specialized cocktail data processing agent. Your single purpose is to take raw, text-based cocktail information and convert it into a structured JSON object.
 
 **CRITICAL RULES:**
 
-1.  **Analyze Input:** The user will provide raw text from a weather service.
-2.  **Extract & Transform:** From this text, you MUST:
-    a.  Infer the full city and country name.
-    b.  If the user provides a city without a state, use the user's location to infer the state.
-    c.  If there are multiple cities with the same name, default to the most populated city.
-    d.  If you are unable to infer the location, ask the user for clarification.
-    e.  Extract the primary temperature value.
-    f.  **Convert the temperature from Fahrenheit to Celsius.** Round to the nearest whole number.
-    g.  Read all the forecast details and synthesize them into a single, concise `forecast_summary` string.
-3.  **Format Output:** Your final output MUST be a single JSON object that strictly conforms to the `WeatherForecastData` schema. **Do not add any other text, greetings, or explanations.**
+1.  **Analyze Input:** The user will provide raw text from a cocktail database.
+2.  **Extract & Transform:** From this text, you MUST extract the following fields:
+    a.  `cocktail_name`
+    b.  `category`
+    c.  `glass_type`
+    d.  `instructions`
+    e.  `ingredients` (This must be a JSON array of strings, where each string is an ingredient and its measurement).
+3.  **Format Output:** Your final output MUST be a single JSON object that strictly conforms to the `CocktailData` schema. **Do not add any other text, greetings, or explanations.**
 
 **EXAMPLE:**
-- **User Input:** "Forecast for New York, NY: Today, sunny, with a high near 88. Tonight, mostly clear, with a low around 72."
+- **User Input:** "ID: 11007\nName: Margarita\nCategory: Ordinary Drink\nGlass: Cocktail glass\nInstructions: Rub the rim of the glass with the lime slice... Shake the tequila, Cointreau, and lime juice with ice...\nIngredients:\n- 1 1/2 oz Tequila\n- 1/2 oz Triple sec\n- 1 oz Lime juice\n- Salt"
 - **Your Output (JSON):**
   ```json
   {
-    "city": "New York, NY",
-    "country": "USA",
-    "temperature_c": 31,
-    "condition": "Sunny",
-    "forecast_summary": "Today will be sunny with a high of 88°F. Tonight will be mostly clear with a low of 72°F."
+    "cocktail_name": "Margarita",
+    "category": "Ordinary Drink",
+    "glass_type": "Cocktail glass",
+    "instructions": "Rub the rim of the glass with the lime slice... Shake the tequila, Cointreau, and lime juice with ice...",
+    "ingredients": [
+      "1 1/2 oz Tequila",
+      "1/2 oz Triple sec",
+      "1 oz Lime juice",
+      "Salt"
+    ]
   }
   ```
 """
 
-WEATHER_AGENT_CONFIG: Dict = {
-    "name": "weather_agent",
-    "description": "An agent that can help questions about weather",
-    "instruction": UPDATED_WEATHER_AGENT_INSTRUCTION,
+COCKTAIL_AGENT_CONFIG: Dict = {
+    "name": "cocktail_agent",
+    "description": "An agent that can help questions about cocktail",
+    "instruction": UPDATED_COCKTAIL_AGENT_INSTRUCTION,
     "model": "gemini-2.5-flash",
-    "mcp_url_env_var": "WEA_MCP_SERVER_URL",
+    "mcp_url_env_var": "CT_MCP_SERVER_URL",
 }
 
 
-class WeatherAgentExecutor(AdkBaseMcpAgentExecutor):
-    """Agent Executor for weather-related queries that returns structured JSON."""
+class CocktailAgentExecutor(AdkBaseMcpAgentExecutor):
+    """Agent Executor for cocktail-related queries that returns structured JSON."""
 
     def get_agent_config(self) -> Dict:
-        """Return weather agent configuration."""
-        return WEATHER_AGENT_CONFIG
+        """Return cocktail agent configuration."""
+        return COCKTAIL_AGENT_CONFIG
 
     async def execute(
         self,
@@ -89,7 +92,7 @@ class WeatherAgentExecutor(AdkBaseMcpAgentExecutor):
         """
         Overrides the base execute method to perform an extra validation step.
         It runs the standard MCP agent logic, then validates the raw text output
-        against the WeatherForecastData Pydantic schema and returns the validated
+        against the CocktailData Pydantic schema and returns the validated
         JSON as the final response.
         """
         # 1. Run the base executor to get the raw text output from the LLM
@@ -99,7 +102,7 @@ class WeatherAgentExecutor(AdkBaseMcpAgentExecutor):
         # 2. Validate and parse the raw output into structured JSON
         logging.info(f"Raw LLM output for validation: {raw_text_output}")
         try:
-            validated_data = validate_and_parse(raw_text_output, WeatherForecastData)
+            validated_data = validate_and_parse(raw_text_output, CocktailData)
             final_json_output = json.dumps(validated_data, indent=2)
 
             # 3. Return the validated JSON as an artifact
@@ -108,7 +111,7 @@ class WeatherAgentExecutor(AdkBaseMcpAgentExecutor):
                 name="answer",
             )
             await updater.complete()
-            logging.info("Successfully returned validated JSON for Weather Agent.")
+            logging.info("Successfully returned validated JSON for Cocktail Agent.")
 
         except (JSONDecodeError, ValidationError) as e:
             # Assumed to be a clarifying question, pass it back to the user

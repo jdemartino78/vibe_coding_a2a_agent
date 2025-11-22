@@ -14,8 +14,8 @@ from google.auth import default
 from google.auth.transport.requests import Request as AuthRequest
 
 # Import the Agent Card and Agent Executor specific to the Weather Agent
-from specialized_agents.weather_agent.weather_agent_card import weather_agent_card
-from specialized_agents.weather_agent.weather_agent_executor import WeatherAgentExecutor
+from specialized.weather.card import weather_agent_card
+from specialized.weather.executor import WeatherAgentExecutor
 
 # Import the A2aAgent class from Vertex AI SDK for deployment
 from vertexai.preview.reasoning_engines import A2aAgent
@@ -166,7 +166,7 @@ agent_code_config.update({
         "PROJECT_ID": PROJECT_ID,
         "LOCATION": LOCATION,
     },
-    "extra_packages": ["specialized_agents/weather_agent", "shared"]
+    "extra_packages": ["specialized/weather", "shared"]
 })
 
 agent_engine_resource_name = (

@@ -39,7 +39,7 @@ from google.auth import exceptions as google_auth_exceptions
 from google.auth.transport import requests as google_auth_requests
 from google.genai import types
 from google.oauth2 import id_token as google_id_token
-from shared.a2a_tools import task_updater_context
+from shared.tools import task_updater_context
 
 # Imports for MemoryBankCustomizationConfig
 from vertexai._genai.types import MemoryBankCustomizationConfig as CustomizationConfig
