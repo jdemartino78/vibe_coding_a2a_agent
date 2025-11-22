@@ -7,7 +7,7 @@ import uuid
 import json
 import asyncio
 import contextvars
-from typing import Any
+from typing import Any, Dict, Optional, Union
 from a2a.client import ClientFactory, ClientConfig
 from a2a.types import (
     Message,
