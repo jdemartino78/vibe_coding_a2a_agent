@@ -15,7 +15,7 @@ import asyncio
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from orchestrator.logic import AdkOrchestratorAgentExecutor
 from shared.custom_context_builder import CustomCallContextBuilder
-from shared.database.connection import get_database_task_store, initialize_dependencies, get_db_engine
+from shared.database.connection import get_database_task_store, get_db_engine
 from shared.database.sessions import initialize_session_store
 from typing import Optional
 import logging
@@ -59,7 +59,6 @@ class OrchestratorAgentExecutor(AgentExecutor):
                 # Double-check after acquiring the lock to ensure initialization
                 # hasn't happened while waiting.
                 if self._task_store is None:
-                    await initialize_dependencies()
                     self._task_store = get_database_task_store()
                     db_engine = get_db_engine()
                     await initialize_session_store(db_engine)
