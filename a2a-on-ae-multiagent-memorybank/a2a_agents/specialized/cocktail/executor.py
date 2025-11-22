@@ -63,7 +63,7 @@ The user may ask for drinks based on "vibes" or weather. You MUST translate thes
     ]
   }
   ```
-""
+"""
 
 COCKTAIL_AGENT_CONFIG: Dict = {
     "name": "cocktail_agent",
