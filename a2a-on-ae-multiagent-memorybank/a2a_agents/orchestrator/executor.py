@@ -258,7 +258,8 @@ class OrchestratorAgentExecutor(AgentExecutor):
                 events_compaction_config=EventsCompactionConfig(
                     compaction_interval=5,  # Summarize every 5 turns
                     overlap_size=2,         # Keep 2 turns of overlap
-                )
+                ),
+                plugins=[LoggingPlugin()],
             )
 
             my_memory_service = PersistentVertexAiMemoryBankService(
@@ -278,7 +279,6 @@ class OrchestratorAgentExecutor(AgentExecutor):
                 artifact_service=InMemoryArtifactService(),
                 session_service=my_session_service,
                 memory_service=my_memory_service,
-                plugins=[LoggingPlugin()],
             )
 
     def before_model_callback(self, callback_context, llm_request):
