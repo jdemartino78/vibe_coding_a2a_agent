@@ -71,16 +71,6 @@ We engineered the `ORCHESTRATOR_INSTRUCTION` in `orchestrator/logic.py` to enfor
 
 ---
 
-## 3. Performance Optimization
-
-### Model Selection: Pro vs. Flash
-*   **Initial State:** The Orchestrator used `gemini-2.5-pro`.
-*   **Optimization:** We switched to `gemini-2.5-flash` for the `OrchestratorLogic`.
-*   **Rationale:** The Orchestrator's primary job is **routing** and **synthesis**, which requires high speed and low latency but not the deep reasoning capabilities of the "Pro" model.
-*   **Result:** Significant reduction in "Time to First Byte" (TTFB) and overall request latency, making the agent feel much snappier.
-
----
-
 ## 4. Lessons Learned & Framework Specifics
 
 ### The `task_store_builder` Constraint
