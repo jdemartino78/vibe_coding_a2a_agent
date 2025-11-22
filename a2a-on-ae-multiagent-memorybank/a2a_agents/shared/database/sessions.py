@@ -17,9 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 # Define the table structure for storing session mappings.
 # We use a composite primary key of (user_id, context_id) for better normalization.
+# Changed table name to 'session_mappings_v2' to force schema update.
 metadata = sqlalchemy.MetaData()
 session_mappings_table = sqlalchemy.Table(
-    "session_mappings",
+    "session_mappings_v2",
     metadata,
     sqlalchemy.Column("user_id", sqlalchemy.String(255), primary_key=True),
     sqlalchemy.Column("context_id", sqlalchemy.String(255), primary_key=True),
@@ -35,7 +36,7 @@ session_mappings_table = sqlalchemy.Table(
 
 async def initialize_session_store(engine: AsyncEngine):
     """
-    Creates the 'session_mappings' table in the database if it does not already exist.
+    Creates the 'session_mappings_v2' table in the database if it does not already exist.
 
     Args:
         engine: The SQLAlchemy AsyncEngine to use for the connection.
