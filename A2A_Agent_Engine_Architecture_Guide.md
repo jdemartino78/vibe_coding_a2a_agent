@@ -24,30 +24,41 @@ We implemented a **Stateful Orchestrator, Stateless Worker** pattern.
 
 ## 2. Key Technical Highlights
 
-### A. The Sync/Async Bridge (Lazy Initialization Pattern)
-**Context:** The `A2aAgent` framework requires a **synchronous** `task_store_builder` function during initialization. However, cloud-native dependencies (Secret Manager, AlloyDB connections) typically require **asynchronous** initialization.
+### A. The Sync/Async Bridge (Synchronous Builder Pattern)
+**Context:** The `A2aAgent` framework requires a **synchronous** `task_store_builder` function during initialization. However, cloud-native dependencies (Secret Manager, AlloyDB connections) typically involve asynchronous calls.
 
 **The Solution:**
-We implemented a **Synchronous Builder with Blocking Init** in `shared/database/connection.py`.
-*   We initially tried a complex `GlobalTaskStoreProxy` for lazy async loading.
-*   **Simplification:** We refactored to a simpler synchronous builder that blocks the thread briefly to fetch secrets.
-*   **Outcome:** This reduced code complexity significantly while satisfying the framework's contract with negligible impact on cold-start performance (~200ms).
+We implemented a **Synchronous Builder with Blocking Initialization** in `shared/database/connection.py`.
 
-### B. Database Normalization & Composite Keys
-**Context:** Mapping a User ID and a Context ID to a Vertex AI Session ID is crucial for state recovery. A naive approach often involves concatenating strings (e.g., `user-context`).
+*   **Mechanism:** The `build_database_task_store()` function is defined synchronously. Inside, it uses the synchronous `SecretManagerServiceClient` to fetch credentials, blocking the thread briefly only during the application's cold start.
+*   **Integration:** It immediately constructs the `AsyncEngine` (which is a non-blocking operation) and returns the configured `DatabaseTaskStore`.
+*   **Why it matters:** This approach drastically reduces code complexity compared to lazy-loading proxies. It satisfies the framework's strict synchronous contract while ensuring the runtime database operations remain fully asynchronous and non-blocking. The startup latency impact (~200ms) is negligible for the reliability gained.
+
+### B. Session ID Translation Layer (Composite Keys)
+**Context:** There is a fundamental mismatch between the **Agent-to-Agent (A2A) Protocol** and **Vertex AI Agent Engine**:
+*   **A2A** uses a client-provided `context_id` (typically a UUID) to track a conversation.
+*   **Vertex AI Agent Engine** generates its own long, opaque resource names for sessions (e.g., `projects/123/.../sessions/abc-789`).
+
+**The Problem:** We cannot simply force the A2A `context_id` to be the Vertex `session_id`. When a user sends a follow-up message with the same A2A `context_id`, the Agent Engine has no native way to know which of its internal Session Resources to load. We need a bridge.
 
 **The Solution:**
-In `shared/database/sessions.py`, we utilized a **Composite Primary Key**:
+We created a dedicated **Translation Layer** in `shared/database/sessions.py` using a **Composite Primary Key**:
+
 ```python
 session_mappings_table = sqlalchemy.Table(
-    "session_mappings",
+    "session_mappings_v2",
     metadata,
+    # The "Foreign" world (A2A context + User)
     sqlalchemy.Column("user_id", sqlalchemy.String(255), primary_key=True),
     sqlalchemy.Column("context_id", sqlalchemy.String(255), primary_key=True),
-    # ...
+    # The "Native" world (Vertex AI Resource Name)
+    sqlalchemy.Column("vertex_session_name", sqlalchemy.String(255), nullable=False),
 )
 ```
-**Why it matters:** This ensures data integrity and allows for efficient querying by `user_id` alone (e.g., "find all sessions for this user") without complex string parsing.
+
+**Why it matters:**
+1.  **State Recovery:** This allows us to look up the correct Vertex Session Resource (`vertex_session_name`) instantly using the incoming A2A `context_id` and `user_id`. Without this, every message would start a blank conversation.
+2.  **Composite Integrity:** Using `(user_id, context_id)` as the primary key prevents collisions and allows for efficient queries like "Retrieve all active sessions for User X".
 
 ### C. Deterministic Tool Routing
 **Context:** LLMs can be unpredictable. We needed the Orchestrator to act as a reliable router, not just a chatbot.
