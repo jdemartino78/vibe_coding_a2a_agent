@@ -60,14 +60,22 @@ session_mappings_table = sqlalchemy.Table(
 1.  **State Recovery:** This allows us to look up the correct Vertex Session Resource (`vertex_session_name`) instantly using the incoming A2A `context_id` and `user_id`. Without this, every message would start a blank conversation.
 2.  **Composite Integrity:** Using `(user_id, context_id)` as the primary key prevents collisions and allows for efficient queries like "Retrieve all active sessions for User X".
 
-### C. Deterministic Tool Routing
-**Context:** LLMs can be unpredictable. We needed the Orchestrator to act as a reliable router, not just a chatbot.
+### C. Structured JSON Routing (The "Reasoning Loop")
+**Context:** LLMs can be unpredictable when asked to "think then act" in unstructured text. Parsing their intent from free-form paragraphs is error-prone.
 
 **The Solution:**
-We engineered the `ORCHESTRATOR_INSTRUCTION` in `orchestrator/logic.py` to enforce a strict protocol:
-1.  **Capability Check:** Reject impossible requests immediately.
-2.  **Sequential Execution:** Force the model to call one tool, wait for the result, and *then* call the next.
-3.  **Synthesis:** Only generate the final natural language response after all data is collected.
+We refactored the Orchestrator in `orchestrator/executor.py` to enforce a **Strict JSON Output Format**. The LLM must respond with one of two JSON schemas:
+
+1.  **Tool Call:** `{"tool_name": "...", "tool_query": {...}}`
+2.  **Final Answer:** `{"final_answer": "..."}`
+
+**Mechanism:**
+*   The `OrchestratorAgentExecutor` runs a `while` loop.
+*   It parses the LLM's JSON response.
+*   If it sees a `tool_name`, it executes the Python function (e.g., `delegate_to_specialist_agent`), appends the result to the chat history, and re-prompts the LLM.
+*   This continues until the LLM outputs a `final_answer`.
+
+**Why it matters:** This turns the Orchestrator into a deterministic state machine. We no longer guess if the agent "meant" to call a tool; the JSON structure makes the intent explicit and machine-readable.
 
 ### D. Shared Utilities & A2A Interoperability
 **Context:** Robust multi-agent systems require common mechanisms for inter-agent communication, context propagation, and secure authentication that are decoupled from individual agent logic.
@@ -82,8 +90,9 @@ We centralized these critical components in the `shared/` directory:
 *   **`shared/auth_utils.py` (A2A Client Authentication):**
     *   Provides the `GoogleAuth` class, which integrates with Google Cloud's authentication mechanisms. This ensures that when the Orchestrator (or any agent acting as a client) calls another agent, the communication is securely authenticated using appropriate service account credentials.
 
-*   **`shared/custom_context_builder.py` (Custom Context Injection):**
-    *   This module allows for injecting custom data or services (like the database engine) into the ADK's `CallbackContext` for specialized agents. This is used in `BaseMcpAgentExecutor` to provide agents with necessary runtime dependencies in a clean, testable manner.
+*   **`shared/base_executor.py` (The Generic Validating Executor):**
+    *   We implemented a **Generic Base Class** that handles the boilerplate of initialization, token management, and execution.
+    *   Crucially, it accepts an optional `output_schema` (Pydantic model). If provided, it automatically attempts to parse and validate the agent's output, retrying if the format is incorrect. This allowed us to delete ~40 lines of duplicate code from each specialized agent.
 
 **Why it matters:**
 This centralization promotes code reuse, reduces boilerplate, and ensures consistent implementation of fundamental cross-cutting concerns (like authentication, logging context, and inter-agent calls) across the entire multi-agent system. It makes the system more maintainable, scalable, and observable.
@@ -92,7 +101,7 @@ This centralization promotes code reuse, reduces boilerplate, and ensures consis
 **Context:** Managing long conversations with Large Language Models (LLMs) can be expensive and slow due to increasing context window size.
 
 **The Solution:**
-We leveraged native ADK (Agent Development Kit) features by wrapping the `LlmAgent` in an `App` construct in `orchestrator/logic.py`.
+We leveraged native ADK (Agent Development Kit) features by wrapping the `LlmAgent` in an `App` construct in `orchestrator/executor.py`.
 
 *   **Context Caching (`ContextCacheConfig`):** We moved the massive `ORCHESTRATOR_INSTRUCTION` to `static_instruction`. This allows the Gemini model to cache the system prompt, significantly reducing latency and cost for all subsequent turns in a conversation.
 *   **Event Compaction (`EventsCompactionConfig`):** We enabled a sliding-window summarizer. Every 5 turns, the ADK automatically compresses older conversation history into a concise summary while keeping recent messages raw. This prevents the context window from overflowing during long sessions.
