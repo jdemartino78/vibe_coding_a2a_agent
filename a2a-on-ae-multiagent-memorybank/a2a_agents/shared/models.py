@@ -35,6 +35,7 @@ class CocktailData(BaseModel):
     glass_type: str = Field(..., description="The recommended glass for the cocktail.")
     instructions: str = Field(..., description="The instructions for preparing the cocktail.")
     ingredients: list[str] = Field(..., description="A list of ingredients and their measurements.")
+    history: str = Field(None, description="Optional history, origin, or fun facts about the cocktail.")
 
 # --- VALIDATION LOGIC ---
 

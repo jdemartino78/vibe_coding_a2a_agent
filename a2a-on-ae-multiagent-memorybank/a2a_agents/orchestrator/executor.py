@@ -376,14 +376,22 @@ class OrchestratorAgentExecutor(AgentExecutor):
                     raise RuntimeError("ADK Runner is not initialized.")
 
                 llm_output = ""
-                async for event in self.runner.run_async(
-                    session_id=session.id,
-                    user_id=user_id,
-                    new_message=content,
-                ):
-                    if event.is_final_response():
-                        llm_output = self._extract_answer(event, raw_query) # Extract full LLM response
-                        break # We expect one JSON response
+                try:
+                    async for event in self.runner.run_async(
+                        session_id=session.id,
+                        user_id=user_id,
+                        new_message=content,
+                    ):
+                        if event.is_final_response():
+                            # We found the answer, but we continue the loop to let the
+                            # generator finish its cleanup (telemetry, etc.)
+                            output = self._extract_answer(event, raw_query)
+                            if output:
+                                llm_output = output
+                except Exception as e:
+                    logging.error(f"Error during Orchestrator run_async: {e}", exc_info=True)
+                    final_response_text = f"Error: An unexpected error occurred during orchestration: {e}"
+                    break
 
                 logging.info(f"Orchestrator LLM Raw Output: {llm_output}")
 
