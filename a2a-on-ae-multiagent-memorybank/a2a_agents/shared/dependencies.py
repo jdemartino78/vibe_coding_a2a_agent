@@ -77,6 +77,7 @@ async def create_sqlalchemy_engine(
 
 async def initialize_dependencies():
     global database_task_store, _db_engine, _db_connector
+    logger.info("Attempting to initialize dependencies...")
 
     if _db_engine is not None:
         logger.info("Dependencies already initialized.")
@@ -84,11 +85,14 @@ async def initialize_dependencies():
 
     project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
     if not project_id:
+        logger.error("GOOGLE_CLOUD_PROJECT environment variable not set.")
         raise ValueError("GOOGLE_CLOUD_PROJECT environment variable not set.")
+    logger.info(f"GOOGLE_CLOUD_PROJECT is set to: {project_id}")
 
     secret_client = secretmanager.SecretManagerServiceClient()
 
     # Retrieve secrets
+    logger.info("Attempting to retrieve AlloyDB credentials from Secret Manager...")
     try:
         db_user_secret_name = f"projects/{project_id}/secrets/alloydb-user-a2a-agent/versions/latest"
         db_pass_secret_name = f"projects/{project_id}/secrets/alloydb-password-a2a-agent/versions/latest"
