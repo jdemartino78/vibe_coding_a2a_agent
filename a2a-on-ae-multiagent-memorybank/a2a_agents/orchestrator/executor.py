@@ -49,7 +49,7 @@ class OrchestratorAgentExecutor(AgentExecutor):
         self._setup_lock = asyncio.Lock()
         self._agent_engine_id = agent_engine_id
 
-    async def _ensure_setup() -> None:
+    async def _ensure_setup(self) -> None:
         """
         Ensures that the asynchronous setup (database initialization) is completed.
         Uses a lock to prevent race conditions during the first initialization.
