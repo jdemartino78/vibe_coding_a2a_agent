@@ -301,11 +301,10 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
         Gets or creates a Vertex AI session, using the database to map A2A context_id
         to the Vertex AI session ID.
         """
-        session_key = f"{user_id}-{context_id}"
-        vertex_session_name = await get_session_mapping(self.db_engine, session_key)
+        vertex_session_name = await get_session_mapping(self.db_engine, user_id, context_id)
 
         if vertex_session_name:
-            logging.info(f"Found existing session mapping for key {session_key}: {vertex_session_name}")
+            logging.info(f"Found existing session mapping for user {user_id} and context {context_id}: {vertex_session_name}")
             session_id_for_get = vertex_session_name.split('/')[-1]
             session = await session_service.get_session(
                 app_name=self.runner.app_name,
@@ -317,14 +316,14 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
             else:
                 logging.warning(f"Session {vertex_session_name} not found on backend. Creating a new one.")
 
-        logging.info(f"No valid session found for key {session_key}. Creating a new session.")
+        logging.info(f"No valid session found for user {user_id} and context {context_id}. Creating a new session.")
         new_session = await session_service.create_session(
             app_name=self.runner.app_name,
             user_id=user_id,
         )
         
-        await set_session_mapping(self.db_engine, session_key, new_session.id)
-        logging.info(f"Created and mapped new session {new_session.id} for key {session_key}")
+        await set_session_mapping(self.db_engine, user_id, context_id, new_session.id)
+        logging.info(f"Created and mapped new session {new_session.id} for user {user_id} and context {context_id}")
         
         return new_session
 
