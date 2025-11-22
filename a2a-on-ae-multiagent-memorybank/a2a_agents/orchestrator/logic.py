@@ -241,11 +241,20 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
         updater = TaskUpdater(event_queue, context.task_id, context_id)
 
         if not context.current_task:
-            # 4. Submit with metadata and description
-            await updater.submit(
-                description=f"Orchestrator handling query for user {user_id}",
-                metadata=task_metadata
-            )
+            # 4. Submit with metadata
+            try:
+                logging.info(f"Attempting to submit task {context.task_id} via TaskUpdater...")
+                # Use update_status directly because .submit() in the SDK doesn't support metadata or description
+                await updater.update_status(
+                    state=TaskState.submitted,
+                    message=new_agent_text_message(f"Orchestrator handling query for user {user_id}"),
+                    metadata=task_metadata
+                )
+                logging.info("Task submission event enqueued successfully.")
+
+            except Exception as e:
+                logging.error(f"Failed to submit task via TaskUpdater: {e}", exc_info=True)
+                # We proceed, but this is bad.
 
         await updater.start_work()
 

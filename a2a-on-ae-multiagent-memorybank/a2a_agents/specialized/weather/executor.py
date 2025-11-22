@@ -26,7 +26,7 @@ from a2a.types import TaskState, TextPart
 from a2a.utils import new_agent_text_message
 
 
-from shared.base_executor import AdkBaseMcpAgentExecutor
+from shared.base_executor import BaseMcpAgentExecutor
 from shared.models import WeatherForecastData, validate_and_parse
 
 # Set logging
@@ -74,7 +74,7 @@ WEATHER_AGENT_CONFIG: Dict = {
 }
 
 
-class WeatherAgentExecutor(AdkBaseMcpAgentExecutor):
+class WeatherAgentExecutor(BaseMcpAgentExecutor):
     """Agent Executor for weather-related queries that returns structured JSON."""
 
     def get_agent_config(self) -> Dict:

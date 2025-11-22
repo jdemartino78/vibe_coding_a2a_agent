@@ -26,7 +26,7 @@ from a2a.server.tasks import TaskUpdater
 from a2a.types import TaskState, TextPart
 from a2a.utils import new_agent_text_message
 
-from shared.base_executor import AdkBaseMcpAgentExecutor
+from shared.base_executor import BaseMcpAgentExecutor
 from shared.models import CocktailData, validate_and_parse
 
 # Set logging
@@ -77,7 +77,7 @@ COCKTAIL_AGENT_CONFIG: Dict = {
 }
 
 
-class CocktailAgentExecutor(AdkBaseMcpAgentExecutor):
+class CocktailAgentExecutor(BaseMcpAgentExecutor):
     """Agent Executor for cocktail-related queries that returns structured JSON."""
 
     def get_agent_config(self) -> Dict:

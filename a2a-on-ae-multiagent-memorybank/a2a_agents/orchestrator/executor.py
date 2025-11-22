@@ -13,7 +13,7 @@
 # limitations under the License.
 import asyncio
 from a2a.server.agent_execution import AgentExecutor, RequestContext
-from orchestrator.logic import AdkOrchestratorAgentExecutor
+from orchestrator.logic import OrchestratorLogic
 from shared.custom_context_builder import CustomCallContextBuilder
 from shared.database.connection import get_database_task_store, get_db_engine
 from shared.database.sessions import initialize_session_store
@@ -31,7 +31,7 @@ load_dotenv()
 from a2a.server.tasks import TaskStore
 
 class OrchestratorAgentExecutor(AgentExecutor):
-    """Agent Executor that wraps AdkOrchestratorAgentExecutor with environment-based
+    """Agent Executor that wraps OrchestratorLogic with environment-based
     configuration and a custom context builder, and provides stateful conversation
     management.
     """
@@ -44,7 +44,7 @@ class OrchestratorAgentExecutor(AgentExecutor):
             agent_engine_id: Optional agent engine ID.
         """
         super().__init__(**kwargs) # Call super() with any extra kwargs
-        self._core_executor: AdkOrchestratorAgentExecutor | None = None
+        self._core_executor: OrchestratorLogic | None = None
         self._task_store: TaskStore | None = None
         self._setup_lock = asyncio.Lock()
         self._agent_engine_id = agent_engine_id
@@ -63,7 +63,7 @@ class OrchestratorAgentExecutor(AgentExecutor):
                     db_engine = get_db_engine()
                     await initialize_session_store(db_engine)
 
-                    self._core_executor = AdkOrchestratorAgentExecutor(
+                    self._core_executor = OrchestratorLogic(
                         remote_agent_addresses=[
                             os.getenv("COCKTAIL_AGENT_URL", "http://localhost:10002"),
                             os.getenv("WEA_AGENT_URL", "http://localhost:10001"),
