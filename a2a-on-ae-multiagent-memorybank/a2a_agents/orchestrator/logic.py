@@ -43,7 +43,7 @@ from vertexai.preview.reasoning_engines.templates.adk import (
 
 # Custom Imports
 from shared.tools import delegate_to_specialist_agent, user_id_context, task_updater_context
-from shared.base_executor import PersistentVertexAiMemoryBankService
+from shared.services import PersistentVertexAiMemoryBankService
 from shared.database.sessions import get_session_mapping, set_session_mapping
 
 # Set logging
@@ -121,7 +121,7 @@ You are a master orchestrator agent. Your purpose is to fulfill user requests by
 """
 
 
-class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
+class OrchestratorLogic(AgentExecutor, ABC):
     """
     Refactored Tool-Driven Orchestrator Executor.
     Relies on the delegate_to_specialist_agent tool and the LLM's prompt for all A2A logic.
@@ -165,7 +165,7 @@ class AdkOrchestratorAgentExecutor(AgentExecutor, ABC):
         """
         if self.agent is None:
             self.agent = LlmAgent(
-                model="gemini-2.5-pro",
+                model="gemini-2.5-flash",
                 instruction=ORCHESTRATOR_INSTRUCTION,
                 tools=[
                     delegate_to_specialist_agent,
