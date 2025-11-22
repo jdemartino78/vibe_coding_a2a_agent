@@ -28,9 +28,11 @@ from a2a.utils.errors import ServerError
 from dotenv import load_dotenv
 
 # ADK Imports
-from google.adk import Runner
+from google.adk import Runner, App
 from google.adk.agents import LlmAgent
 from google.adk.agents.callback_context import CallbackContext
+from google.adk.agents.context_cache_config import ContextCacheConfig
+from google.adk.apps.app import EventsCompactionConfig
 from google.adk.artifacts import InMemoryArtifactService
 from google.adk.sessions import VertexAiSessionService
 from google.adk.tools.preload_memory_tool import PreloadMemoryTool
@@ -182,17 +184,33 @@ class OrchestratorLogic(AgentExecutor, ABC):
         Initializes the ADK agent and runner with the A2A tool and Vertex AI services.
         """
         if self.agent is None:
+            # 1. Configure Agent with Static Instruction for Caching
             self.agent = LlmAgent(
                 model="gemini-2.5-flash",
-                instruction=ORCHESTRATOR_INSTRUCTION,
+                static_instruction=ORCHESTRATOR_INSTRUCTION,  # Cached system prompt
+                instruction="",  # Dynamic/Turn-based prompt (unused for now)
                 tools=[
                     delegate_to_specialist_agent,
                     PreloadMemoryTool(),
-                ], # ADK implicitly wraps these functions
+                ], 
                 name="orchestrator_agent",
                 description="The central routing agent for multi-step tasks.",
                 before_model_callback=self.before_model_callback,
                 after_agent_callback=auto_save_session_to_memory_callback,
+            )
+
+            # 2. Configure App with Optimization Settings
+            app = App(
+                name="a2a_orchestrator_app",
+                root_agent=self.agent,
+                context_cache_config=ContextCacheConfig(
+                    min_tokens=1000,  # Only cache if prompt > 1000 tokens
+                    ttl_seconds=3600, # Keep cache alive for 1 hour
+                ),
+                events_compaction_config=EventsCompactionConfig(
+                    compaction_interval=5,  # Summarize every 5 turns
+                    overlap_size=2,         # Keep 2 turns of overlap
+                )
             )
 
             my_memory_service = PersistentVertexAiMemoryBankService(
@@ -206,9 +224,9 @@ class OrchestratorLogic(AgentExecutor, ABC):
                 agent_engine_id=self.agent_engine_id,
             )
 
+            # 3. Initialize Runner with the App
             self.runner = Runner(
-                app_name=self.agent.name,
-                agent=self.agent,
+                app=app,  # Pass the configured App instead of just the agent
                 artifact_service=InMemoryArtifactService(),
                 session_service=my_session_service,
                 memory_service=my_memory_service,
