@@ -17,148 +17,12 @@ from google.auth.transport.requests import Request as AuthRequest
 from orchestrator.card import orchestrator_card
 from orchestrator.executor import OrchestratorAgentExecutor
 from shared.custom_context_builder import CustomCallContextBuilder
+from shared.database.connection import build_global_task_store
 
 # Import the A2aAgent class from Vertex AI SDK for deployment
 from vertexai.preview.reasoning_engines import A2aAgent
 
-# Configure logging for better visibility during deployment
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-def get_bearer_token() -> str | None:
-    """Fetches a Google Cloud bearer token using Application Default Credentials."""
-    try:
-        credentials, project = default(
-            scopes=["https://www.googleapis.com/auth/cloud-platform"]
-        )
-        request = AuthRequest()
-        credentials.refresh(request)
-        return credentials.token
-    except Exception as e:
-        logger.error(f"Error getting credentials: {e}")
-        logger.error(
-            "Please ensure you have authenticated with 'gcloud auth application-default login'."
-        )
-    return None
-
-# Determine the project root and construct the path to the .env file
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..', '..'))
-DOTENV_PATH = os.path.join(PROJECT_ROOT, '.env')
-
-# Load environment variables from the root .env file
-load_dotenv(dotenv_path=DOTENV_PATH)
-
-# --- Configuration from Environment Variables ---
-# These variables are crucial for identifying your Google Cloud project and resources.
-PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
-PROJECT_NUMBER = os.getenv("PROJECT_NUMBER")
-LOCATION = os.getenv("LOCATION", "us-central1") # Default to 'us-central1' if not set
-BUCKET_NAME = os.getenv("BUCKET_NAME")
-BUCKET_URI = f"gs://{BUCKET_NAME}"
-
-# The URLs of the previously deployed Cocktail and Weather Agents
-# These are critical dependencies for the Orchestrator Agent to function.
-COCKTAIL_AGENT_URL = os.getenv("COCKTAIL_AGENT_URL")
-WEA_AGENT_URL = os.getenv("WEA_AGENT_URL")
-
-# Validate essential environment variables
-if not PROJECT_ID:
-    raise ValueError("GOOGLE_CLOUD_PROJECT environment variable is not set. Please set it in your .env file.")
-if not PROJECT_NUMBER:
-    raise ValueError("PROJECT_NUMBER environment variable is not set. Please set it in your .env file.")
-if not BUCKET_NAME:
-    raise ValueError("BUCKET_NAME environment variable is not set. Please set it in your .env file.")
-if not COCKTAIL_AGENT_URL:
-    raise ValueError("COCKTAIL_AGENT_URL environment variable is not set. Please deploy the Cocktail Agent first.")
-if not WEA_AGENT_URL:
-    raise ValueError("WEA_AGENT_URL environment variable is not set. Please deploy the Weather Agent first.")
-
-logger.info(f"Using Project ID: {PROJECT_ID}")
-logger.info(f"Using Project Number: {PROJECT_NUMBER}")
-logger.info(f"Using Location: {LOCATION}")
-logger.info(f"Using Staging Bucket: {BUCKET_URI}")
-logger.info(f"Using Cocktail Agent URL: {COCKTAIL_AGENT_URL}")
-logger.info(f"Using Weather Agent URL: {WEA_AGENT_URL}")
-
-# --- Initialize Vertex AI Session ---
-# This sets up the connection to Google Cloud's Vertex AI services.
-vertexai.init(project=PROJECT_ID, location=LOCATION, staging_bucket=BUCKET_URI)
-
-# Initialize the Gen AI client with specific API version and base URL.
-# This is used for interacting with Agent Engine.
-client = vertexai.Client(
-    project=PROJECT_ID,
-    location=LOCATION,
-    http_options=types.HttpOptions(
-        api_version="v1beta1",
-        base_url=f"https://{LOCATION}-aiplatform.googleapis.com/"
-    ),
-)
-
-# --- Agent Engine ID Management ---
-# We check if an Agent Engine ID for the Orchestrator Agent already exists.
-# If not, we create a new one. This ID is crucial for managing the deployed agent.
-orchestrator_agent_engine_id = os.getenv("ORCHESTRATOR_AGENT_ENGINE_ID")
-
-# Base configuration for the Agent Engine resource
-agent_engine_config={
-    "display_name": f"{orchestrator_card.name}-MemoryBank",
-    "description": orchestrator_card.description,
-    "http_options": {
-        "base_url": f"https://{LOCATION}-aiplatform.googleapis.com",
-        "api_version": "v1beta1",
-    },
-    "staging_bucket": BUCKET_URI,
-}
-
-if not orchestrator_agent_engine_id:
-    logger.info("ORCHESTRATOR_AGENT_ENGINE_ID not found. Creating a new Agent Engine resource.")
-    
-    orchestrator_memory_config = {
-        "memory_topics": [
-            {
-                "custom_memory_topic": {
-                    "label": "task_delegation",
-                    "description": "Information about tasks delegated to specialized agents",
-                }
-            },
-            {
-                "custom_memory_topic": {
-                    "label": "agent_routing",
-                    "description": "Information about which agents were selected for which types of queries",
-                }
-            },
-            {"managed_memory_topic": {"managed_topic_enum": "USER_PERSONAL_INFO"}},
-            {"managed_memory_topic": {"managed_topic_enum": "USER_PREFERENCES"}},
-            {
-                "managed_memory_topic": {
-                    "managed_topic_enum": "KEY_CONVERSATION_DETAILS"
-                }
-            },
-            {
-                "managed_memory_topic": {
-                    "managed_topic_enum": "EXPLICIT_INSTRUCTIONS"
-                }
-            },
-        ],
-    }
-    
-    creation_config = agent_engine_config.copy()
-    creation_config["context_spec"] = {
-        "memory_bank_config": {
-            "generation_config": {
-                "model": f"projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/gemini-2.5-flash"
-            },
-            "customization_configs": [orchestrator_memory_config],
-        }
-    }
-    
-    # Create the resource without the agent code
-    agent_engine_resource = client.agent_engines.create(config=creation_config)
-    orchestrator_agent_engine_id = agent_engine_resource.api_resource.name.split('/')[-1]
-    set_key(DOTENV_PATH, "ORCHESTRATOR_AGENT_ENGINE_ID", orchestrator_agent_engine_id)
-    logger.info(f"Newly created ORCHESTRATOR_AGENT_ENGINE_ID: {orchestrator_agent_engine_id}")
+# ... (rest of imports and setup) ...
 
 # --- Now, with a valid ID, define the A2A Agent and deploy the code ---
 logger.info(f"Using ORCHESTRATOR_AGENT_ENGINE_ID: {orchestrator_agent_engine_id}")
@@ -167,6 +31,8 @@ a2a_agent = A2aAgent(
     agent_card=orchestrator_card,
     agent_executor_builder=OrchestratorAgentExecutor,
     agent_executor_kwargs={"agent_engine_id": orchestrator_agent_engine_id},
+    task_store_builder=build_global_task_store,
+    task_store_kwargs={},
 )
 
 # Configuration for deploying the agent code

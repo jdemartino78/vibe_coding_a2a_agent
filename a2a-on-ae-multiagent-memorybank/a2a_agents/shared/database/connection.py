@@ -1,6 +1,7 @@
 import asyncio
 import os
 import logging
+from typing import Optional
 
 import asyncpg
 import sqlalchemy
@@ -8,7 +9,9 @@ import sqlalchemy.ext.asyncio
 from google.cloud.alloydb.connector import AsyncConnector
 from google.cloud import secretmanager
 
-from a2a.server.tasks import DatabaseTaskStore
+from a2a.server.tasks import DatabaseTaskStore, TaskStore
+from a2a.types import Task
+from a2a.server.context import ServerCallContext
 
 logger = logging.getLogger(__name__)
 
@@ -136,3 +139,37 @@ def get_db_engine() -> sqlalchemy.ext.asyncio.engine.AsyncEngine:
     if _db_engine is None:
         raise RuntimeError("Database engine has not been initialized. Call initialize_dependencies first.")
     return _db_engine
+
+class GlobalTaskStoreProxy(TaskStore):
+    """A proxy TaskStore that lazily initializes and delegates to the global DatabaseTaskStore.
+    
+    This allows the Agent Engine framework to instantiate a TaskStore synchronously (via builder)
+    while deferring the async initialization of the database connection until the first usage.
+    """
+    async def _get_store(self) -> DatabaseTaskStore:
+        if database_task_store is None:
+            logger.info("GlobalTaskStoreProxy: Initializing dependencies lazily...")
+            await initialize_dependencies()
+        return get_database_task_store()
+
+    async def save(
+        self, task: Task, context: ServerCallContext | None = None
+    ) -> None:
+        store = await self._get_store()
+        await store.save(task, context)
+
+    async def get(
+        self, task_id: str, context: ServerCallContext | None = None
+    ) -> Task | None:
+        store = await self._get_store()
+        return await store.get(task_id, context)
+
+    async def delete(
+        self, task_id: str, context: ServerCallContext | None = None
+    ) -> None:
+        store = await self._get_store()
+        await store.delete(task_id, context)
+
+def build_global_task_store() -> TaskStore:
+    """Builder function to return the GlobalTaskStoreProxy."""
+    return GlobalTaskStoreProxy()
