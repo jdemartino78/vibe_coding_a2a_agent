@@ -92,6 +92,7 @@ You are a master orchestrator agent. Your purpose is to fulfill user requests by
 
 **OUTPUT FORMAT:**
 Your response MUST be a single JSON object. It should contain EITHER a tool call OR a final answer.
+DO NOT output any text outside the JSON object.
 
 **A. Tool Call:** If you need to delegate to a specialized agent:
 ```json
@@ -115,7 +116,7 @@ Your response MUST be a single JSON object. It should contain EITHER a tool call
 1.  **Capability Check:** Before delegating, always verify if the request is within the specialized agent's capabilities (e.g., Weather Agent only for US locations). If not, provide a `final_answer` explaining the limitation.
 2.  **Translate Vibe:** If the user asks for a 'vibe' (e.g., 'warming', 'refreshing') for a cocktail, directly translate that into the `query` for the 'Cocktail Agent'. The Cocktail Agent is now smart enough to understand these. 
 3.  **Sequential Execution:** Always make one tool call, wait for its result, and process it before considering the next step. DO NOT make parallel tool calls.
-4.  **Information Synthesis:** After all necessary tool calls are made and information is gathered, formulate a `final_answer` for the user in Markdown. DO NOT return raw JSON from specialized agents.
+4.  **Information Synthesis:** After all necessary tool calls are made and information is gathered, formulate a `final_answer` for the user in Markdown. Wrap this markdown in the JSON structure shown above.
 
 **MEMORY:**
 - Remember previous turns in the conversation to maintain context.
@@ -431,8 +432,16 @@ class OrchestratorAgentExecutor(AgentExecutor):
                         final_response_text = f"Error: Orchestrator failed to understand its own plan based on output: {parsed_output}"
 
                 except json.JSONDecodeError as e:
-                    logging.error(f"Orchestrator LLM output was not valid JSON: {llm_output}. Error: {e}", exc_info=True)
-                    final_response_text = f"Error: Orchestrator encountered an invalid JSON response. Please try again. Raw output: {llm_output}"
+                    logging.warning(f"Orchestrator LLM output was not valid JSON: {llm_output}. Error: {e}")
+                    # FALLBACK: If the model outputs plain text that doesn't look like a broken tool call,
+                    # assume it is the final answer.
+                    if "tool_name" not in llm_output and "tool_query" not in llm_output:
+                        logging.info("Output appears to be a direct text response. Treating as final_answer.")
+                        final_response_text = llm_output
+                    else:
+                        logging.error("Output failed JSON validation and looks like a malformed tool call.")
+                        final_response_text = f"Error: Orchestrator encountered an invalid JSON response. Please try again. Raw output: {llm_output}"
+
                 except Exception as e:
                     logging.error(f"Unexpected error processing Orchestrator LLM output: {e}", exc_info=True)
                     final_response_text = f"Error: Orchestrator experienced an internal issue. {e}"
@@ -505,17 +514,26 @@ class OrchestratorAgentExecutor(AgentExecutor):
         return answer
 
     def _clean_json_string(self, json_str: str) -> str:
-        """Clean markdown code blocks from JSON string."""
-        cleaned = json_str.strip()
-        if cleaned.startswith("```json"):
-            cleaned = cleaned[7:]
-        elif cleaned.startswith("```"):
-            cleaned = cleaned[3:]
+        """Clean markdown code blocks and extra text from JSON string."""
+        import re
+        # Try to find JSON code block
+        match = re.search(r"```json(.*?)```", json_str, re.DOTALL)
+        if match:
+            return match.group(1).strip()
         
-        if cleaned.endswith("```"):
-            cleaned = cleaned[:-3]
+        match = re.search(r"```(.*?)```", json_str, re.DOTALL)
+        if match:
+             return match.group(1).strip()
+             
+        # If no code block, try to find the first '{' and last '}'
+        start = json_str.find('{')
+        end = json_str.rfind('}')
+        
+        if start != -1 and end != -1 and end > start:
+            return json_str[start:end+1]
             
-        return cleaned.strip()
+        # Return original if no JSON structure found (will likely fail parsing)
+        return json_str.strip()
 
     async def cancel(
         self, context: RequestContext, event_queue: EventQueue
