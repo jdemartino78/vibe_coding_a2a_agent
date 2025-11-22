@@ -15,7 +15,7 @@
 import asyncio
 import logging
 import os
-import re
+import json
 from typing import NoReturn, Optional
 
 # A2A Imports
@@ -37,8 +37,6 @@ from google.adk.artifacts import InMemoryArtifactService
 from google.adk.sessions import VertexAiSessionService
 from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 from google.genai import types as genai_types
-import vertexai
-from sqlalchemy.ext.asyncio import AsyncEngine
 from vertexai.preview.reasoning_engines.templates.adk import (
     _default_instrumentor_builder,
 )
