@@ -88,6 +88,17 @@ We centralized these critical components in the `shared/` directory:
 **Why it matters:**
 This centralization promotes code reuse, reduces boilerplate, and ensures consistent implementation of fundamental cross-cutting concerns (like authentication, logging context, and inter-agent calls) across the entire multi-agent system. It makes the system more maintainable, scalable, and observable.
 
+### E. ADK-Native Context Management
+**Context:** Managing long conversations with Large Language Models (LLMs) can be expensive and slow due to increasing context window size.
+
+**The Solution:**
+We leveraged native ADK (Agent Development Kit) features by wrapping the `LlmAgent` in an `App` construct in `orchestrator/logic.py`.
+
+*   **Context Caching (`ContextCacheConfig`):** We moved the massive `ORCHESTRATOR_INSTRUCTION` to `static_instruction`. This allows the Gemini model to cache the system prompt, significantly reducing latency and cost for all subsequent turns in a conversation.
+*   **Event Compaction (`EventsCompactionConfig`):** We enabled a sliding-window summarizer. Every 5 turns, the ADK automatically compresses older conversation history into a concise summary while keeping recent messages raw. This prevents the context window from overflowing during long sessions.
+
+**Why it matters:** This transforms the agent from a simple chatbot into a production-ready system capable of handling infinite-length conversations efficiently and cost-effectively.
+
 ---
 
 ## 5. Lessons Learned & Framework Specifics
