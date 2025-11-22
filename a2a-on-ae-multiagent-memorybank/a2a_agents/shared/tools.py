@@ -22,10 +22,17 @@ from a2a.types import (
 from a2a.utils import new_agent_text_message
 from shared.auth_utils import GoogleAuth
 
+# --- EXTENSION KEYS ---
+TRACEABILITY_EXTENSION_KEY = "github.com/a2aproject/a2a-protocol/extensions/traceability/v1/trace_id"
+
 # --- CONTEXT VARIABLE FOR USER_ID ---
 # This context variable will hold the user_id for the current request,
 # allowing it to be accessed safely in a concurrent environment.
 user_id_context = contextvars.ContextVar('user_id_for_delegation', default='default-user')
+
+# --- CONTEXT VARIABLE FOR TRACEABILITY ---
+# Holds the current trace_id (correlation ID) to propagate to sub-agents.
+trace_id_context = contextvars.ContextVar('trace_id_context', default=None)
 
 # --- CONTEXT VARIABLE FOR TASK UPDATER ---
 # This allows the tool to send status updates back to the client (Orchestrator's client).
@@ -107,9 +114,11 @@ async def delegate_to_specialist_agent(agent_name: str, query: str) -> str:
     if not agent_url:
         return f"Error: The URL for '{agent_name}' is not configured via {url_var}."
 
-    # Get the user_id from the context variable
+    # Get the user_id and trace_id from the context variables
     user_id = user_id_context.get()
-    logger.info(f"Attempting to delegate to '{agent_name}' with query: '{query}' for user_id: '{user_id}'")
+    trace_id = trace_id_context.get()
+    
+    logger.info(f"Attempting to delegate to '{agent_name}' with query: '{query}' (User: {user_id}, Trace: {trace_id})")
 
     # Send a status update via the orchestrator's TaskUpdater (if available)
     updater = task_updater_context.get()
@@ -138,11 +147,16 @@ async def delegate_to_specialist_agent(agent_name: str, query: str) -> str:
             relative_card_path="/v1/card",
         )
         
+        # Prepare metadata with User ID and Trace ID
+        msg_metadata = {"user_id": user_id}
+        if trace_id:
+            msg_metadata[TRACEABILITY_EXTENSION_KEY] = trace_id
+        
         message = Message(
             message_id=str(uuid.uuid4()),
             role=Role.user,
             parts=[Part(root=TextPart(text=query))],
-            metadata={"user_id": user_id}  # Pass user_id in metadata
+            metadata=msg_metadata  # Pass updated metadata
         )
         
         # 1. Send the initial message to start the task
