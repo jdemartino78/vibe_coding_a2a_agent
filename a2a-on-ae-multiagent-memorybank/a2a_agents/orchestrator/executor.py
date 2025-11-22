@@ -278,6 +278,7 @@ class OrchestratorAgentExecutor(AgentExecutor):
                 artifact_service=InMemoryArtifactService(),
                 session_service=my_session_service,
                 memory_service=my_memory_service,
+                plugins=[LoggingPlugin()],
             )
 
     def before_model_callback(self, callback_context, llm_request):
