@@ -157,6 +157,10 @@ agent_code_config.update({
         "google-auth-oauthlib>=1.2.2",
         "google-auth[openid]>=2.40.3",
         "google-genai>=1.36.0",
+        "google-cloud-secret-manager",
+        "google-cloud-alloydb-connector[asyncpg]",
+        "sqlalchemy",
+        "asyncpg",
     ],
     "env_vars": {
         "CT_MCP_SERVER_URL": CT_MCP_SERVER_URL,
