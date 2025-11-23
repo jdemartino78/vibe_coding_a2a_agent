@@ -74,9 +74,15 @@ def build_database_task_store() -> TaskStore:
 
     try:
         logger.info("Fetching AlloyDB credentials from Secret Manager...")
-        db_user = get_secret("alloydb-user-a2a-agent")
-        db_pass = get_secret("alloydb-password-a2a-agent")
-        db_instance_uri = get_secret("alloydb-instance-uri")
+        
+        # Make secret IDs configurable via environment variables
+        user_secret_id = os.environ.get("ALLOYDB_USER_SECRET_ID", "alloydb-user-a2a-agent")
+        pass_secret_id = os.environ.get("ALLOYDB_PASSWORD_SECRET_ID", "alloydb-password-a2a-agent")
+        uri_secret_id = os.environ.get("ALLOYDB_INSTANCE_URI_SECRET_ID", "alloydb-instance-uri")
+        
+        db_user = get_secret(user_secret_id)
+        db_pass = get_secret(pass_secret_id)
+        db_instance_uri = get_secret(uri_secret_id)
         db_name = os.environ.get("ALLOYDB_NAME", "a2a_tasks")
 
         # Create the async engine (this part is non-blocking)

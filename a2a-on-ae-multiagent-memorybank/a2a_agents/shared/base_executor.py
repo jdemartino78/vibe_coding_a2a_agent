@@ -43,6 +43,8 @@ from google.oauth2 import id_token as google_id_token
 from shared.tools import task_updater_context
 from shared.services import PersistentVertexAiMemoryBankService
 from shared.models import validate_and_parse
+from shared.database.sessions import get_session_mapping, set_session_mapping
+from shared.database.connection import get_db_engine
 
 # Imports for MemoryBankCustomizationConfig
 from vertexai.preview.reasoning_engines.templates.adk import (
@@ -166,8 +168,6 @@ class BaseMcpAgentExecutor(AgentExecutor, ABC):
     5. MCP authentication and token management
     6. Optional JSON validation of agent output
     """
-    # In-memory cache for mapping A2A context_id to ADK session objects.
-    CONTEXT_ID_TO_SESSION_MAP = {}
 
     def __init__(self, agent_engine_id: str = None, output_schema: Optional[Type[BaseModel]] = None) -> None:
         """Initialize with lazy loading pattern.
@@ -183,6 +183,7 @@ class BaseMcpAgentExecutor(AgentExecutor, ABC):
         self.token_manager = None
         self.agent_engine_id = agent_engine_id
         self.output_schema = output_schema
+        self.db_engine = None
 
         self.project_id = os.environ.get("PROJECT_ID")
         self.location = os.environ.get("LOCATION")
@@ -247,6 +248,9 @@ class BaseMcpAgentExecutor(AgentExecutor, ABC):
         if self.agent is None:
             # Get agent configuration
             config = self.get_agent_config()
+
+            # Initialize DB engine for session persistence
+            self.db_engine = get_db_engine()
 
             # Use custom memory service that keeps httpx client alive
             my_memory_service = PersistentVertexAiMemoryBankService(
@@ -460,21 +464,46 @@ class BaseMcpAgentExecutor(AgentExecutor, ABC):
                     logging.debug("Refreshed MCP authentication headers")
 
     async def _get_or_create_session(self, context_id: str, user_id: str):
-        """Get existing session from cache or create a new one."""
+        """
+        Gets or creates a Vertex AI session, using the database to map A2A context_id
+        to the Vertex AI session ID.
+        """
         session_start_time = time.time()
-        if context_id in self.CONTEXT_ID_TO_SESSION_MAP:
-            logging.info(f"Found existing session for context {context_id}.")
-            session = self.CONTEXT_ID_TO_SESSION_MAP[context_id]
-        else:
-            logging.info(f"Creating new session for context {context_id}.")
-            session = await self.runner.session_service.create_session(
-                app_name=self.runner.app_name,
-                user_id=user_id,
-            )
-            self.CONTEXT_ID_TO_SESSION_MAP[context_id] = session
+        agent_name = self.agent.name # Use the specific agent's name (e.g., "cocktail_agent")
+        
+        vertex_session_name = await get_session_mapping(self.db_engine, user_id, context_id, agent_name)
+
+        if vertex_session_name:
+            logging.info(f"Found existing session mapping for user {user_id}, context {context_id}, agent {agent_name}: {vertex_session_name}")
+            session_id_for_get = vertex_session_name.split('/')[-1]
+            try:
+                session = await self.runner.session_service.get_session(
+                    app_name=self.runner.app_name,
+                    user_id=user_id,
+                    session_id=session_id_for_get,
+                )
+                if session:
+                    session_end_time = time.time()
+                    logging.info(f"Session management time for context {context_id}: {session_end_time - session_start_time:.2f} seconds")
+                    return session
+                else:
+                    logging.warning(f"Session {vertex_session_name} not found on backend. Creating a new one.")
+            except Exception as e:
+                logging.warning(f"Failed to retrieve existing session {vertex_session_name}: {e}. Creating a new one.")
+
+        logging.info(f"No valid session found for user {user_id}, context {context_id}, agent {agent_name}. Creating a new session.")
+        new_session = await self.runner.session_service.create_session(
+            app_name=self.runner.app_name,
+            user_id=user_id,
+        )
+        
+        # Ensure new_session.id is a string as expected by set_session_mapping
+        await set_session_mapping(self.db_engine, user_id, context_id, agent_name, new_session.id)
+        logging.info(f"Created and mapped new session {new_session.id} for user {user_id} and context {context_id}")
+        
         session_end_time = time.time()
         logging.info(f"Session management time for context {context_id}: {session_end_time - session_start_time:.2f} seconds")
-        return session
+        return new_session
 
     def _extract_answer(self, event) -> str:
         """Extract text answer from agent response."""

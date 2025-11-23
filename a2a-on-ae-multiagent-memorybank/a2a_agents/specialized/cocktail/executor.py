@@ -12,15 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
 from typing import Dict, Optional
 from dotenv import load_dotenv
 
 from shared.base_executor import BaseMcpAgentExecutor
 from shared.models import CocktailData
 
-# Set logging
-logging.getLogger().setLevel(logging.INFO)
+# Load environment variables
 load_dotenv()
 
 # --- AGENT CONFIGURATION ---
