@@ -1,9 +1,9 @@
 # Vibe Coding: Building a Stateful A2A Multi-Agent System
 
 > **⚠️ DISCLAIMER**: THIS DEMO IS INTENDED FOR DEMONSTRATION PURPOSES ONLY. IT IS NOT INTENDED FOR USE IN A PRODUCTION ENVIRONMENT.
->
+> 
 > **⚠️ Important**: A2A is in active development (WIP) thus, in the near future there might be changes that are different from what demonstrated here.
->
+> 
 > **⚠️ Important**: Please run this lab in **Cloud Shell** to ensure you have the proper permissions.
 
 ## Overview
@@ -147,6 +147,8 @@ These queries test the new "Vibe Mapping" logic where abstract requests are tran
 -   `I'm feeling cold and gloomy. Recommend a warming drink.` (Should suggest Whiskey/Rum/Hot drinks)
 -   `It's a hot summer party! What should we serve?` (Should suggest Tequila/Gin/Fruity drinks)
 -   `I want something sophisticated and classy.` (Should suggest Martinis or Old Fashioneds)
+-   `I'm in a tropical mood, what's a refreshing gin-based cocktail?`
+-   `Something with rum and a sophisticated feel, please.`
 
 **Test 3: Weather-Influenced Cocktails (Contextual Synthesis)**
 These queries require the Orchestrator to fetch weather first, then use that context to query the Cocktail Agent.
@@ -158,6 +160,9 @@ This sequence tests the agent's conversational memory, which is persisted in the
 1.  **First Turn:** `Give me a random cocktail.`
 2.  **Second Turn:** `Great, what's the weather in a good city to drink that?`
     *The orchestrator should infer a relevant city (e.g., New Orleans for a Sazerac) and check its weather.*
+1.  **First Turn:** `What's a good cocktail with tequila?`
+2.  **Second Turn:** `And how about a non-alcoholic refreshing alternative for my friend?`
+    *The orchestrator should remember the previous request and suggest a non-alcoholic drink.*
 
 **Test 5: Complex Reasoning & Origins**
 This query requires extracting a specific detail (origin) to drive the next step.
@@ -170,6 +175,8 @@ Test the system's resilience and configured limitations.
     *(Should politely decline because the Weather Agent is limited to the US)*
 -   `Get weather for Narnia.`
     *(Should handle the "Location not found" error gracefully)*
+-   `What's the weather in Springfield?`
+    *(Should ask for clarification due to ambiguous city name in the US)*
 
 ## What We Just Built
 Congratulations! You have successfully built a stateful multi-agent system.
@@ -181,6 +188,7 @@ Congratulations! You have successfully built a stateful multi-agent system.
 
 Here is the architecture you deployed:
 ![architecture](a2a-on-ae-multiagent-memorybank/asset/a2a_ae_diagram.png)
+
 
 ## Learn More
 - [Agent Development Kit (ADK)](https://github.com/GoogleCloudPlatform/agent-development-kit)

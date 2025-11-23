@@ -16,7 +16,8 @@ import asyncio
 import logging
 import os
 import json
-from typing import NoReturn, Optional
+import re
+from typing import NoReturn, Optional, Dict, Any
 
 # A2A Imports
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -48,9 +49,10 @@ from shared.services import PersistentVertexAiMemoryBankService
 from shared.database.sessions import get_session_mapping, set_session_mapping, initialize_session_store
 from shared.database.connection import get_database_task_store, get_db_engine
 
-# Set logging
-logging.getLogger().setLevel(logging.INFO)
+# Load environment variables
 load_dotenv()
+
+MAX_ORCHESTRATION_TURNS = 5
 
 async def auto_save_session_to_memory_callback(callback_context: CallbackContext):
     """
@@ -216,8 +218,10 @@ class OrchestratorAgentExecutor(AgentExecutor):
             async with self._setup_lock:
                 if self._task_store is None:
                     logging.info("Starting OrchestratorAgentExecutor setup...")
-                    self._task_store = get_database_task_store()
-                    self.db_engine = get_db_engine()
+                    
+                    # Wrap synchronous database initialization in asyncio.to_thread
+                    self._task_store = await asyncio.to_thread(get_database_task_store)
+                    self.db_engine = await asyncio.to_thread(get_db_engine)
                     await initialize_session_store(self.db_engine)
                     
                     self._init_agent()
@@ -363,102 +367,18 @@ class OrchestratorAgentExecutor(AgentExecutor):
             )
             logging.info(f"Using session: {session.id} for user: {user_id}")
 
-            # --- Core Orchestrator Logic --- 
-            # This loop allows for multiple tool calls until a final_answer is produced.
-            tool_result: Optional[str] = None
-            final_response_text: Optional[str] = None
-
-            while final_response_text is None:
-                # Construct the message for the LLM
-                llm_message_parts = [genai_types.Part(text=raw_query)]
-                if tool_result:
-                    llm_message_parts.append(genai_types.Part(text=f"Tool Result: {tool_result}"))
-                content = genai_types.Content(role=Role.user, parts=llm_message_parts)
-                
-                if not self.runner:
-                    raise RuntimeError("ADK Runner is not initialized.")
-
-                llm_output = ""
-                try:
-                    async for event in self.runner.run_async(
-                        session_id=session.id,
-                        user_id=user_id,
-                        new_message=content,
-                    ):
-                        if event.is_final_response():
-                            # We found the answer, but we continue the loop to let the
-                            # generator finish its cleanup (telemetry, etc.)
-                            output = self._extract_answer(event, raw_query)
-                            if output:
-                                llm_output = output
-                except Exception as e:
-                    logging.error(f"Error during Orchestrator run_async: {e}", exc_info=True)
-                    final_response_text = f"Error: An unexpected error occurred during orchestration: {e}"
-                    break
-
-                logging.info(f"Orchestrator LLM Raw Output: {llm_output}")
-
-                try:
-                    # Clean markdown formatting if present
-                    cleaned_output = self._clean_json_string(llm_output)
-                    parsed_output = json.loads(cleaned_output)
-
-                    if "tool_name" in parsed_output and "tool_query" in parsed_output:
-                        # It's a tool call
-                        tool_name = parsed_output["tool_name"]
-                        tool_query_args = parsed_output["tool_query"]
-                        
-                        if tool_name == "delegate_to_specialist_agent":
-                            agent_name = tool_query_args["agent_name"]
-                            query = tool_query_args["query"]
-
-                            logging.info(f"Orchestrator delegating to {agent_name} with query: '{query}'")
-
-                            # This is the actual tool call. The `delegate_to_specialist_agent` tool
-                            # itself returns the final string answer from the specialist agent.
-                            tool_result = await delegate_to_specialist_agent(agent_name=agent_name, query=query) # type: ignore
-
-                            logging.info(f"Received tool result from {agent_name}: {tool_result}")
-                            # Loop again with tool_result to get final_answer from Orchestrator LLM
-
-                        else:
-                            logging.error(f"Unknown tool_name in LLM output: {tool_name}")
-                            final_response_text = f"Error: Orchestrator tried to use an unknown tool: {tool_name}"
-
-                    elif "final_answer" in parsed_output:
-                        # It's the final answer
-                        final_response_text = parsed_output["final_answer"]
-
-                    else:
-                        logging.error(f"LLM output did not contain expected 'tool_name'/'tool_query' or 'final_answer': {parsed_output}")
-                        final_response_text = f"Error: Orchestrator failed to understand its own plan based on output: {parsed_output}"
-
-                except json.JSONDecodeError as e:
-                    logging.warning(f"Orchestrator LLM output was not valid JSON: {llm_output}. Error: {e}")
-                    # FALLBACK: If the model outputs plain text that doesn't look like a broken tool call,
-                    # assume it is the final answer.
-                    if "tool_name" not in llm_output and "tool_query" not in llm_output:
-                        logging.info("Output appears to be a direct text response. Treating as final_answer.")
-                        final_response_text = llm_output
-                    else:
-                        logging.error("Output failed JSON validation and looks like a malformed tool call.")
-                        final_response_text = f"Error: Orchestrator encountered an invalid JSON response. Please try again. Raw output: {llm_output}"
-
-                except Exception as e:
-                    logging.error(f"Unexpected error processing Orchestrator LLM output: {e}", exc_info=True)
-                    final_response_text = f"Error: Orchestrator experienced an internal issue. {e}"
+            # Delegate to extracted reasoning loop logic
+            final_response_text = await self._run_reasoning_loop(session, user_id, raw_query, updater)
             
             # --- Final Response Handling ---
-            if final_response_text:
-                await updater.add_artifact(
-                    [TextPart(text=final_response_text)],
-                    name="final_answer",
-                )
-                await updater.complete()
-            else:
-                # Should not happen if loop terminates correctly
-                logging.error("Orchestrator finished without a final_response_text.")
-                raise RuntimeError("Orchestrator logic flow error: No final response.")
+            if not final_response_text: 
+                 final_response_text = "Error: No final response generated."
+
+            await updater.add_artifact(
+                [TextPart(text=final_response_text)],
+                name="final_answer",
+            )
+            await updater.complete()
 
         except Exception as e:
             logging.error(f"Error during execution: {e!s}", exc_info=True)
@@ -472,15 +392,99 @@ class OrchestratorAgentExecutor(AgentExecutor):
             if updater_token:
                 task_updater_context.reset(updater_token)
 
+    async def _run_reasoning_loop(
+        self, session: Any, user_id: str, raw_query: str, updater: TaskUpdater
+    ) -> str:
+        """
+        Executes the core reasoning loop: LLM -> Tool Call -> LLM -> Final Answer.
+        
+        Args:
+            session: The Vertex AI session object.
+            user_id: The ID of the user.
+            raw_query: The user's initial query.
+            updater: The TaskUpdater for logging.
+
+        Returns:
+            The final text response to be returned to the user.
+        """
+        tool_result: Optional[str] = None
+        final_response_text: Optional[str] = None
+        turns = 0 
+
+        while final_response_text is None and turns < MAX_ORCHESTRATION_TURNS:
+            turns += 1
+
+            # Construct the message for the LLM
+            llm_message_parts = [genai_types.Part(text=raw_query)]
+            if tool_result:
+                llm_message_parts.append(genai_types.Part(text=f"Tool Result: {tool_result}"))
+                tool_result = None # Consume the tool result after passing it to the LLM
+
+            content = genai_types.Content(role=Role.user, parts=llm_message_parts)
+            
+            if not self.runner:
+                raise RuntimeError("ADK Runner is not initialized.")
+
+            llm_output = ""
+            try:
+                async for event in self.runner.run_async(
+                    session_id=session.id,
+                    user_id=user_id,
+                    new_message=content,
+                ):
+                    if event.is_final_response():
+                        llm_output = self._extract_answer(event, raw_query)
+            except Exception as e:
+                logging.error(f"Error during Orchestrator run_async: {e}", exc_info=True)
+                return f"Error: An unexpected error occurred during orchestration: {e}"
+
+            logging.info(f"Orchestrator LLM Raw Output: {llm_output}")
+
+            # Robust JSON Parsing and Decision Making
+            parsed_output = self._parse_llm_output(llm_output)
+
+            if "final_answer" in parsed_output:
+                final_response_text = parsed_output["final_answer"]
+            elif "tool_name" in parsed_output and "tool_query" in parsed_output:
+                tool_name = parsed_output["tool_name"]
+                tool_query_args = parsed_output["tool_query"]
+                
+                if tool_name == "delegate_to_specialist_agent":
+                    agent_name = tool_query_args.get("agent_name")
+                    query = tool_query_args.get("query")
+
+                    if agent_name and query:
+                        logging.info(f"Orchestrator delegating to {agent_name} with query: '{query}'")
+                        tool_result = await delegate_to_specialist_agent(agent_name=agent_name, query=query) # type: ignore
+                        logging.info(f"Received tool result from {agent_name}: {tool_result}")
+                    else:
+                        logging.error(f"Invalid arguments for delegate_to_specialist_agent: {tool_query_args}")
+                        final_response_text = f"Error: Invalid delegation command: {tool_query_args}"
+                else:
+                    logging.error(f"Unknown tool_name in LLM output: {tool_name}")
+                    final_response_text = f"Error: Orchestrator tried to use an unknown tool: {tool_name}"
+            else:
+                # Fallback if structure is lost, but some text exists, or unknown structure
+                logging.warning(f"Orchestrator LLM output did not conform to expected JSON structure: {parsed_output}")
+                final_response_text = parsed_output.get("final_answer", f"Error: Orchestrator failed to understand its own plan based on output: {llm_output}")
+        
+        if not final_response_text:
+            final_response_text = f"Error: Orchestrator exceeded maximum {MAX_ORCHESTRATION_TURNS} turns. Please try again with a more specific query."
+            
+        return final_response_text
+
     async def _get_or_create_session(self, session_service: VertexAiSessionService, context_id: str, user_id: str):
         """
         Gets or creates a Vertex AI session, using the database to map A2A context_id
         to the Vertex AI session ID.
         """
-        vertex_session_name = await get_session_mapping(self.db_engine, user_id, context_id)
+        # Define the agent name for scoping the session
+        agent_name = "orchestrator"
+        
+        vertex_session_name = await get_session_mapping(self.db_engine, user_id, context_id, agent_name)
 
         if vertex_session_name:
-            logging.info(f"Found existing session mapping for user {user_id} and context {context_id}: {vertex_session_name}")
+            logging.info(f"Found existing session mapping for user {user_id}, context {context_id}, agent {agent_name}: {vertex_session_name}")
             session_id_for_get = vertex_session_name.split('/')[-1]
             session = await session_service.get_session(
                 app_name=self.runner.app_name,
@@ -492,13 +496,13 @@ class OrchestratorAgentExecutor(AgentExecutor):
             else:
                 logging.warning(f"Session {vertex_session_name} not found on backend. Creating a new one.")
 
-        logging.info(f"No valid session found for user {user_id} and context {context_id}. Creating a new session.")
+        logging.info(f"No valid session found for user {user_id}, context {context_id}, agent {agent_name}. Creating a new session.")
         new_session = await session_service.create_session(
             app_name=self.runner.app_name,
             user_id=user_id,
         )
         
-        await set_session_mapping(self.db_engine, user_id, context_id, new_session.id)
+        await set_session_mapping(self.db_engine, user_id, context_id, agent_name, new_session.id)
         logging.info(f"Created and mapped new session {new_session.id} for user {user_id} and context {context_id}")
         
         return new_session
@@ -515,27 +519,49 @@ class OrchestratorAgentExecutor(AgentExecutor):
 
         return answer
 
-    def _clean_json_string(self, json_str: str) -> str:
-        """Clean markdown code blocks and extra text from JSON string."""
-        import re
-        # Try to find JSON code block
-        match = re.search(r"```json(.*?)```", json_str, re.DOTALL)
+    def _parse_llm_output(self, output: str) -> Dict[str, Any]:
+        """Robustly parse JSON from LLM output, handling markdown and malformed cases."""
+        # 1. Attempt direct JSON parse
+        try:
+            return json.loads(output)
+        except json.JSONDecodeError:
+            pass # Fall through to more robust parsing
+
+        # 2. Try to find a JSON code block (```json...```)
+        match = re.search(r"```json\s*(.*?)\s*```", output, re.DOTALL)
         if match:
-            return match.group(1).strip()
-        
-        match = re.search(r"```(.*?)```", json_str, re.DOTALL)
+            try:
+                return json.loads(match.group(1).strip())
+            except json.JSONDecodeError:
+                logging.warning(f"Failed to parse JSON from ```json block: {match.group(1)}")
+
+        # 3. Try to find a generic code block (```...```)
+        match = re.search(r"```\s*(.*?)\s*```", output, re.DOTALL)
         if match:
-             return match.group(1).strip()
-             
-        # If no code block, try to find the first '{' and last '}'
-        start = json_str.find('{')
-        end = json_str.rfind('}')
-        
+            try:
+                return json.loads(match.group(1).strip())
+            except json.JSONDecodeError:
+                logging.warning(f"Failed to parse JSON from generic ``` block: {match.group(1)}")
+
+        # 4. Try to find the first '{' and last '}' for a raw JSON string
+        start = output.find('{')
+        end = output.rfind('}')
         if start != -1 and end != -1 and end > start:
-            return json_str[start:end+1]
-            
-        # Return original if no JSON structure found (will likely fail parsing)
-        return json_str.strip()
+            potential_json_str = output[start:end+1]
+            try:
+                return json.loads(potential_json_str)
+            except json.JSONDecodeError:
+                logging.warning(f"Failed to parse JSON from raw braces: {potential_json_str}")
+
+        # 5. If all JSON parsing attempts fail, check if it resembles a tool call (heuristic)
+        # If it contains "tool_name" but isn't valid JSON, it's likely a malformed tool call attempt
+        if "tool_name" in output or "final_answer" in output:
+            logging.error(f"LLM output appears to be a malformed JSON tool call/final answer: {output}")
+            return {"final_answer": f"Error: Orchestrator received malformed JSON. Raw output: {output}"}
+
+        # 6. Default to treating the entire output as a final answer text
+        logging.info(f"LLM output is not JSON and not a malformed tool call, treating as direct text response: {output}")
+        return {"final_answer": output.strip()}
 
     async def cancel(
         self, context: RequestContext, event_queue: EventQueue

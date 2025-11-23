@@ -179,19 +179,35 @@ async def delegate_to_specialist_agent(agent_name: str, query: str) -> str:
         task_id: str = initial_response.id
         logger.info(f"Task received with ID: {task_id} and status: {initial_response.status.state}.")
 
-        # 2. Process the final task
-        if initial_response.status.state == TaskState.completed:
-            response_text = _get_final_text_from_task(initial_response)
+        # 2. Polling for Completion
+        current_task = initial_response
+        attempts = 0
+        max_attempts = 30  # 30 * 2s = 60s timeout
+
+        while current_task.status.state not in TERMINAL_STATES and attempts < max_attempts:
+            logger.info(f"Task {task_id} is {current_task.status.state}. Polling... ({attempts + 1}/{max_attempts})")
+            await asyncio.sleep(2)
+            attempts += 1
+            # Fetch the latest task status
+            current_task = await client.get_task(task_id)
+
+        # 3. Process the final task result
+        if current_task.status.state == TaskState.completed:
+            response_text = _get_final_text_from_task(current_task)
             logger.info(f"Received RAW response from '{agent_name}'. Returning to LLM: '{response_text}'")
             return response_text
-        else:
-            error_message = f"Task failed with state: {initial_response.status.state}."
-            if initial_response.status.message and initial_response.status.message.parts:
+        elif current_task.status.state in TERMINAL_STATES:
+            # Handle other terminal states (failed, canceled, rejected)
+            error_message = f"Task failed with state: {current_task.status.state}."
+            if current_task.status.message and current_task.status.message.parts:
                  # Safely access text from the message parts
-                 text_parts = [p.root.text for p in initial_response.status.message.parts if p.root.text]
+                 text_parts = [p.root.text for p in current_task.status.message.parts if p.root.text]
                  if text_parts:
                     error_message += f" Reason: {' '.join(text_parts)}"
             return error_message
+        else:
+             # Timeout
+             return f"Error: Timeout waiting for {agent_name} to complete task {task_id}."
 
     except Exception as e:
         logger.error(f"An exception occurred while communicating with '{agent_name}': {e}", exc_info=True)

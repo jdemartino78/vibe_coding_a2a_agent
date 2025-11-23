@@ -182,6 +182,8 @@ agent_code_config.update({
         "google-genai>=1.36.0",
         "google-cloud-alloydb-connector[asyncpg]",
         "google-cloud-secret-manager",
+        "sqlalchemy",
+        "asyncpg",
     ],
     "env_vars": {
         "COCKTAIL_AGENT_URL": COCKTAIL_AGENT_URL,
