@@ -1,6 +1,18 @@
-# FILE: a2a-on-ae-multiagent-memorybank/a2a_multiagent_mcp_app/a2a_agents/common/a2a_tools.py
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# import os
 
-import os
 import logging
 import httpx
 import uuid
@@ -179,14 +191,20 @@ async def delegate_to_specialist_agent(agent_name: str, query: str) -> str:
         task_id: str = initial_response.id
         logger.info(f"Task received with ID: {task_id} and status: {initial_response.status.state}.")
 
-        # 2. Polling for Completion
+        # 2. Polling for Completion (with adaptive backoff)
         current_task = initial_response
         attempts = 0
-        max_attempts = 30  # 30 * 2s = 60s timeout
+        max_attempts = 60
+        sleep_time = 0.2
+        max_sleep = 2.0
 
         while current_task.status.state not in TERMINAL_STATES and attempts < max_attempts:
-            logger.info(f"Task {task_id} is {current_task.status.state}. Polling... ({attempts + 1}/{max_attempts})")
-            await asyncio.sleep(2)
+            logger.info(f"Task {task_id} is {current_task.status.state}. Polling in {sleep_time:.2f}s... ({attempts + 1}/{max_attempts})")
+            await asyncio.sleep(sleep_time)
+            
+            # Exponential backoff
+            sleep_time = min(sleep_time * 1.5, max_sleep)
+            
             attempts += 1
             # Fetch the latest task status
             current_task = await client.get_task(task_id)
