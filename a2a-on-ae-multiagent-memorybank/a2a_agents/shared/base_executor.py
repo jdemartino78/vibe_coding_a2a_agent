@@ -16,6 +16,7 @@ import logging
 import os
 import time
 import json
+import asyncio
 from abc import ABC, abstractmethod
 from typing import Dict, NoReturn, Optional, Type
 from json import JSONDecodeError
@@ -184,6 +185,7 @@ class BaseMcpAgentExecutor(AgentExecutor, ABC):
         self.agent_engine_id = agent_engine_id
         self.output_schema = output_schema
         self.db_engine = None
+        self._setup_lock = asyncio.Lock()
 
         self.project_id = os.environ.get("PROJECT_ID")
         self.location = os.environ.get("LOCATION")
@@ -240,9 +242,19 @@ class BaseMcpAgentExecutor(AgentExecutor, ABC):
         agent_engine_id = agent_engine.api_resource.name.split("/")[-1]
         return agent_engine_id
 
-    def _init_agent(self) -> None:
+    async def _ensure_agent_initialized(self) -> None:
         """
-        Lazy initialization of agent resources.
+        Asynchronously ensures the agent is initialized using a double-checked locking pattern.
+        Offloads the synchronous initialization logic to a separate thread to prevent blocking.
+        """
+        if self.agent is None:
+            async with self._setup_lock:
+                if self.agent is None:
+                    await asyncio.to_thread(self._init_agent_sync)
+
+    def _init_agent_sync(self) -> None:
+        """
+        Synchronous initialization of agent resources.
         This constructs the agent and its token manager using the config.
         """
         if self.agent is None:
@@ -387,9 +399,9 @@ class BaseMcpAgentExecutor(AgentExecutor, ABC):
         Processes a user query, runs the ADK agent, and returns the raw text output.
         """
         start_time = time.time()
-        # Initialize agent on first call
-        if self.agent is None:
-            self._init_agent()
+        
+        # Initialize agent on first call (Async safe)
+        await self._ensure_agent_initialized()
 
         # Extract the user's question from the protocol message
         query = context.get_user_input()
